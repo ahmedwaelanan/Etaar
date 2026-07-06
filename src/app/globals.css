@@ -1,26 +1,73 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #06060a;
+  color: #f0f0f0;
+  font-family: var(--font-cairo), sans-serif;
+  background-image:
+    linear-gradient(rgba(201,169,110,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(201,169,110,0.02) 1px, transparent 1px);
+  background-size: 64px 64px;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #06060a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(201,169,110,0.3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(201,169,110,0.5);
+}
+
+input, textarea, select {
+  font-family: var(--font-cairo), sans-serif;
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/[0.03] backdrop-blur-2xl border border-white/[0.08] rounded-2xl;
+  }
+  .glass-hover {
+    @apply hover:bg-white/[0.06] hover:border-white/[0.14] transition-all duration-300;
+  }
+  .gold-glow {
+    box-shadow: 0 0 40px rgba(201,169,110,0.1), 0 0 80px rgba(201,169,110,0.05);
+  }
+  .gold-text-glow {
+    text-shadow: 0 0 30px rgba(201,169,110,0.3);
+  }
+  .input-dark {
+    @apply w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-white placeholder-white/30 outline-none focus:border-gold/40 focus:bg-white/[0.06] transition-all duration-300;
+  }
+  .btn-gold {
+    @apply bg-gold text-base font-semibold px-6 py-3 rounded-xl hover:bg-gold/90 transition-all duration-300 hover:shadow-[0_0_24px_rgba(201,169,110,0.3)] active:scale-[0.98];
+  }
+  .btn-ghost {
+    @apply bg-white/[0.04] border border-white/[0.08] text-white/80 px-6 py-3 rounded-xl hover:bg-white/[0.08] hover:border-white/[0.14] transition-all duration-300 active:scale-[0.98];
+  }
+  
 }
