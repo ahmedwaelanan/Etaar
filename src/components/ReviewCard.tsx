@@ -9,50 +9,239 @@ interface ReviewCardProps {
 }
 
 export default function ReviewCard({ review }: ReviewCardProps) {
-  const initials = review.profile?.full_name?.charAt(0) || 'م'
+  const initials =
+    review.profile?.full_name?.charAt(0)?.toUpperCase() || 'U'
 
   return (
-    <div className="glass p-5 glass-hover">
-      <div className="flex items-start gap-3.5">
+    <div
+      className="
+        w-full
+        p-5
+        sm:p-6
+        transition-all
+        duration-300
+        hover:-translate-y-[2px]
+      "
+      style={{
+        background: 'rgba(255,255,255,.28)',
+        border: '1px solid rgba(41,42,40,.08)',
+        boxShadow: '0 12px 30px rgba(41,42,40,.035)',
+      }}
+    >
+      <div className="flex items-start gap-4">
+
+        {/* =================================================
+            AVATAR
+        ================================================= */}
+
         <div className="flex-shrink-0">
           {review.profile?.avatar_url ? (
             <Image
               src={review.profile.avatar_url}
-              alt=""
-              width={40}
-              height={40}
-              className="w-10 h-10 rounded-xl object-cover border border-white/[0.08]"
+              alt={review.profile?.full_name || 'User'}
+              width={44}
+              height={44}
+              className="
+                w-11
+                h-11
+                rounded-full
+                object-cover
+              "
+              style={{
+                border: '1px solid rgba(180,154,104,.20)',
+              }}
             />
           ) : (
-            <div className="w-10 h-10 rounded-xl bg-gold/10 border border-gold/20 flex items-center justify-center">
-              <span className="text-gold font-bold text-sm">{initials}</span>
+            <div
+              className="
+                w-11
+                h-11
+                rounded-full
+                flex
+                items-center
+                justify-center
+              "
+              style={{
+                background: 'rgba(180,154,104,.08)',
+                border: '1px solid rgba(180,154,104,.18)',
+              }}
+            >
+              <span
+                className="
+                  text-sm
+                  font-semibold
+                "
+                style={{
+                  color: '#A88C58',
+                }}
+              >
+                {initials}
+              </span>
             </div>
           )}
         </div>
 
+        {/* =================================================
+            REVIEW CONTENT
+        ================================================= */}
+
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-3 mb-1.5">
-            <p className="text-white font-medium text-sm truncate">
-              {review.profile?.full_name || 'مستخدم'}
-            </p>
-            <span className="text-white/20 text-[11px] flex-shrink-0">
-              {new Date(review.created_at).toLocaleDateString('ar-EG', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-              })}
+
+          {/* NAME + DATE */}
+
+          <div
+            className="
+              flex
+              items-start
+              justify-between
+              gap-3
+              mb-2
+            "
+          >
+            <div className="min-w-0">
+
+              <p
+                className="
+                  text-sm
+                  font-semibold
+                  truncate
+                "
+                style={{
+                  color: '#292A28',
+                }}
+              >
+                {review.profile?.full_name || 'User'}
+              </p>
+
+              <div className="flex items-center gap-2 mt-1">
+                <span
+                  className="
+                    w-4
+                    h-px
+                  "
+                  style={{
+                    background: '#B49A68',
+                  }}
+                />
+
+                <span
+                  className="
+                    text-[9px]
+                    uppercase
+                    tracking-[0.12em]
+                  "
+                  style={{
+                    color: '#A39B91',
+                  }}
+                >
+                  Verified Review
+                </span>
+              </div>
+
+            </div>
+
+            {/* DATE */}
+
+            <span
+              className="
+                text-[10px]
+                flex-shrink-0
+                pt-0.5
+              "
+              style={{
+                color: '#AAA198',
+              }}
+            >
+              {new Date(review.created_at).toLocaleDateString(
+                'en-US',
+                {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                }
+              )}
             </span>
           </div>
 
-          <StarRating rating={review.rating} size={13} className="mb-2" />
+          {/* =================================================
+              RATING
+          ================================================= */}
 
-          {review.comment && (
-            <p className="text-white/50 text-sm leading-relaxed whitespace-pre-line">
+          <div
+            className="
+              flex
+              items-center
+              gap-2.5
+              mb-2.5
+            "
+          >
+            <StarRating
+              rating={review.rating}
+              size={14}
+            />
+
+            <span
+              className="
+                text-[10px]
+                font-medium
+              "
+              style={{
+                color: '#A88C58',
+              }}
+            >
+              {review.rating}/5
+            </span>
+          </div>
+
+          {/* =================================================
+              COMMENT
+          ================================================= */}
+
+          {review.comment ? (
+            <p
+              className="
+                text-sm
+                leading-[1.75]
+                whitespace-pre-line
+              "
+              style={{
+                color: '#716B63',
+              }}
+            >
               {review.comment}
             </p>
+          ) : (
+            <p
+              className="
+                text-xs
+                italic
+              "
+              style={{
+                color: '#AAA198',
+              }}
+            >
+              No comment provided.
+            </p>
           )}
+
         </div>
       </div>
+
+      {/* =================================================
+          BOTTOM ACCENT
+      ================================================= */}
+
+      <div
+        className="
+          mt-5
+          h-px
+          w-full
+        "
+        style={{
+          background:
+            'linear-gradient(90deg, rgba(180,154,104,.22), rgba(41,42,40,.04), transparent)',
+        }}
+      />
     </div>
   )
 }

@@ -1,245 +1,2529 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Product, CATEGORY_LABELS, Review } from '@/types'
+import {
+  Product,
+  CATEGORY_LABELS,
+  Review,
+} from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { useCart } from '@/context/CartContext'
+import { supabase } from '@/lib/supabase'
+import { getGuestId } from '@/lib/manual-link-order'
+import InlineReviewList from '@/components/InlineReviewList'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import InlineReviewList from '@/components/InlineReviewList'
 
 export default function ProductDetailClient({
   product,
-  reviews: initialReviews,
 }: {
   product: Product
-  reviews: Review[]
 }) {
   const { user } = useAuth()
   const { addToCart } = useCart()
   const router = useRouter()
+
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
-  const [selectedSize, setSelectedSize] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [isSuccessModalOpen, setIsSuccessModalOpen] =
+    useState(false)
 
-  const autoSlideRef = useRef<NodeJS.Timeout | null>(null)
+  const [fullName, setFullName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [address, setAddress] = useState('')
+  const [selectedSize, setSelectedSize] =
+    useState<string | null>(null)
 
-  const images = product?.images && product.images.length > 0 ? product.images : []
-  const sizes = product?.sizes && product.sizes.length > 0 ? product.sizes : []
+  const [reviews, setReviews] = useState<Review[]>([])
 
-  const startAutoSlide = () => {
-    stopAutoSlide()
-    if (images.length > 1) {
-      autoSlideRef.current = setInterval(() => {
-        setSelectedImage((prev) => (prev === images.length - 1 ? 0 : prev + 1))
-      }, 4500)
+  const autoSlideRef =
+    useRef<NodeJS.Timeout | null>(null)
+
+  const [isLightboxOpen, setIsLightboxOpen] =
+    useState(false)
+
+  const [lightboxIndex, setLightboxIndex] =
+    useState(0)
+
+  const [zoom, setZoom] = useState(1)
+
+  const [position, setPosition] = useState({
+    x: 0,
+    y: 0,
+  })
+
+  const [isDragging, setIsDragging] =
+    useState(false)
+
+  const dragStart = useRef({
+    x: 0,
+    y: 0,
+  })
+
+  /* =====================================================
+     IMAGES
+  ===================================================== */
+
+  const images =
+    product?.images &&
+    product.images.length > 0
+      ? product.images
+      : []
+
+  /* =====================================================
+     PRICE
+  ===================================================== */
+
+  const basePrice =
+    parseFloat(String(product?.price)) || 0
+
+  /* =====================================================
+     SIZES
+  ===================================================== */
+
+  const parsedSizes = (() => {
+    try {
+      if (Array.isArray(product?.sizes)) {
+        return product.sizes.map((s) =>
+          typeof s === 'string'
+            ? JSON.parse(s)
+            : s
+        )
+      }
+
+      if (
+        typeof product?.sizes ===
+        'string'
+      ) {
+        return JSON.parse(
+          product.sizes || '[]'
+        )
+      }
+
+      return []
+    } catch {
+      return []
+    }
+  })()
+
+  const hasSizes =
+    parsedSizes.length > 0
+
+  const getSizePrice = (
+    size: any
+  ) => {
+    return (
+      typeof size === 'object' &&
+      size !== null &&
+      typeof size.price === 'number'
+    )
+      ? size.price
+      : basePrice
+  }
+
+  const getSizeName = (
+    size: any
+  ) => {
+    return typeof size === 'object' &&
+      size !== null
+      ? String(size.name ?? '')
+      : String(size)
+  }
+
+  const minPrice = hasSizes
+    ? Math.min(
+        ...parsedSizes.map(
+          (size: any) =>
+            getSizePrice(size)
+        )
+      )
+    : basePrice
+
+  let currentPrice = basePrice
+
+  if (
+    hasSizes &&
+    selectedSize
+  ) {
+    for (
+      let i = 0;
+      i < parsedSizes.length;
+      i++
+    ) {
+      if (
+        getSizeName(
+          parsedSizes[i]
+        ) === selectedSize
+      ) {
+        currentPrice =
+          getSizePrice(
+            parsedSizes[i]
+          )
+        break
+      }
     }
   }
 
-  const stopAutoSlide = () => {
-    if (autoSlideRef.current) {
-      clearInterval(autoSlideRef.current)
-      autoSlideRef.current = null
-    }
-  }
+  /* =====================================================
+     REVIEWS
+  ===================================================== */
 
-  const resetAutoSlide = () => {
-    stopAutoSlide()
-    startAutoSlide()
-  }
+  useEffect(() => {
+    const fetchReviews =
+      async () => {
+        const { data } =
+          await supabase
+            .from('reviews')
+            .select(
+              '*, profile:profiles(full_name, avatar_url)'
+            )
+            .eq(
+              'product_id',
+              product.id
+            )
+            .order(
+              'created_at',
+              {
+                ascending:
+                  false,
+              }
+            )
+
+        if (data) {
+          setReviews(
+            data as Review[]
+          )
+        }
+      }
+
+    fetchReviews()
+  }, [product.id])
+
+  /* =====================================================
+     DEFAULT SIZE
+  ===================================================== */
+
+  useEffect(() => {
+    if (
+      hasSizes &&
+      parsedSizes.length > 0 &&
+      !selectedSize
+    ) {
+      setSelectedSize(
+        getSizeName(
+          parsedSizes[0]
+        )
+      )
+    }
+  }, [
+    hasSizes,
+    selectedSize,
+  ])
+
+  /* =====================================================
+     AUTO SLIDER
+  ===================================================== */
+
+  const stopAutoSlide =
+    () => {
+      if (
+        autoSlideRef.current
+      ) {
+        clearInterval(
+          autoSlideRef.current
+        )
+
+        autoSlideRef.current =
+          null
+      }
+    }
+
+  const startAutoSlide =
+    () => {
+      stopAutoSlide()
+
+      if (images.length > 1) {
+        autoSlideRef.current =
+          setInterval(() => {
+            setSelectedImage(
+              (prev) =>
+                prev ===
+                images.length - 1
+                  ? 0
+                  : prev + 1
+            )
+          }, 4500)
+      }
+    }
+
+  const resetAutoSlide =
+    () => {
+      stopAutoSlide()
+      startAutoSlide()
+    }
 
   useEffect(() => {
     startAutoSlide()
-    return () => stopAutoSlide()
+
+    return () => {
+      stopAutoSlide()
+    }
   }, [images.length])
 
+  /* =====================================================
+     IMAGE NAVIGATION
+  ===================================================== */
+
   const prevImage = () => {
-    setSelectedImage((prev) => (prev === 0 ? images.length - 1 : prev - 1))
+    setSelectedImage(
+      (prev) =>
+        prev === 0
+          ? images.length - 1
+          : prev - 1
+    )
+
     resetAutoSlide()
   }
 
   const nextImage = () => {
-    setSelectedImage((prev) => (prev === images.length - 1 ? 0 : prev + 1))
+    setSelectedImage(
+      (prev) =>
+        prev ===
+        images.length - 1
+          ? 0
+          : prev + 1
+    )
+
     resetAutoSlide()
   }
 
-  const handleAction = (action: 'cart' | 'buy') => {
-    if (sizes.length > 0 && !selectedSize) {
-      toast.error('Please select a size first')
-      return
-    }
-    
-    // أضفنا quantity هنا
-    addToCart(product, selectedSize || undefined, quantity)
-    
-    if (action === 'buy') {
-      router.push('/cart')
+  /* =====================================================
+     LIGHTBOX
+  ===================================================== */
+
+  const openLightbox = (
+    index: number
+  ) => {
+    setLightboxIndex(index)
+    setZoom(1)
+    setPosition({
+      x: 0,
+      y: 0,
+    })
+
+    setIsLightboxOpen(true)
+
+    document.body.style.overflow =
+      'hidden'
+  }
+
+  const closeLightbox = () => {
+    setIsLightboxOpen(false)
+
+    document.body.style.overflow =
+      'unset'
+  }
+
+  const lightboxPrev = () => {
+    setLightboxIndex(
+      (prev) =>
+        prev === 0
+          ? images.length - 1
+          : prev - 1
+    )
+
+    setZoom(1)
+
+    setPosition({
+      x: 0,
+      y: 0,
+    })
+  }
+
+  const lightboxNext = () => {
+    setLightboxIndex(
+      (prev) =>
+        prev ===
+        images.length - 1
+          ? 0
+          : prev + 1
+    )
+
+    setZoom(1)
+
+    setPosition({
+      x: 0,
+      y: 0,
+    })
+  }
+
+  const handleWheel = (
+    e: React.WheelEvent
+  ) => {
+    e.preventDefault()
+
+    const zoomFactor =
+      e.deltaY < 0
+        ? 0.15
+        : -0.15
+
+    setZoom((prev) =>
+      Math.max(
+        1,
+        Math.min(
+          4,
+          prev + zoomFactor
+        )
+      )
+    )
+  }
+
+  const handleMouseDown = (
+    e: React.MouseEvent
+  ) => {
+    if (zoom > 1) {
+      e.preventDefault()
+
+      setIsDragging(true)
+
+      dragStart.current = {
+        x:
+          e.clientX -
+          position.x,
+        y:
+          e.clientY -
+          position.y,
+      }
     }
   }
-  return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10" dir="ltr">
-      <Link href="/shop" className="inline-flex items-center gap-2 text-white/40 hover:text-gold text-sm transition-colors duration-200 mb-8">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M19 12H5M12 19l-7-7 7-7" />
-        </svg>
-        Back to Shop
-      </Link>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-        
-        {/* ===== ١. الصور ===== */}
-        <div className="space-y-4">
+  const handleMouseMove = (
+    e: React.MouseEvent
+  ) => {
+    if (!isDragging) return
+
+    setPosition({
+      x:
+        e.clientX -
+        dragStart.current.x,
+
+      y:
+        e.clientY -
+        dragStart.current.y,
+    })
+  }
+
+  const handleMouseUp = () => {
+    setIsDragging(false)
+  }
+
+  /* =====================================================
+     ORDER
+  ===================================================== */
+
+  const handleOrder =
+    async () => {
+      if (
+        hasSizes &&
+        !selectedSize
+      ) {
+        toast.error(
+          'Please select a size'
+        )
+        return
+      }
+
+      if (
+        !fullName.trim() ||
+        !phone.trim() ||
+        !address.trim()
+      ) {
+        toast.error(
+          'Please fill in all shipping details'
+        )
+        return
+      }
+
+      setLoading(true)
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from('orders')
+        .insert({
+          user_id:
+            user?.id || null,
+
+          guest_id: user
+            ? null
+            : getGuestId(),
+
+          product_id:
+            product.id,
+
+          quantity,
+
+          total_price:
+            currentPrice *
+            quantity,
+
+          status: 'Pending',
+
+          size: selectedSize,
+
+          group_id:
+            crypto.randomUUID(),
+
+          full_name:
+            fullName.trim(),
+
+          phone_number:
+            phone.trim(),
+
+          shipping_address:
+            address.trim(),
+        })
+
+      if (error) {
+        console.error(
+          'FULL ERROR DETAILS:',
+          error
+        )
+
+        toast.error(
+          `DB Error: ${error.message}`
+        )
+      } else {
+        setIsSuccessModalOpen(
+          true
+        )
+
+        setFullName('')
+        setPhone('')
+        setAddress('')
+        setQuantity(1)
+      }
+
+      setLoading(false)
+    }
+
+  return (
+    <>
+      <main
+        className="min-h-screen"
+        style={{
+          background:
+            '#F5F2ED',
+          color: '#292A28',
+          fontFamily:
+            'Tajawal, sans-serif',
+        }}
+      >
+        {/* =================================================
+            PAGE CONTAINER
+        ================================================= */}
+
+        <div
+          className="
+            max-w-[1180px]
+            mx-auto
+            px-5
+            sm:px-6
+            py-10
+            sm:py-14
+            lg:py-16
+          "
+        >
+          {/* =================================================
+              BACK
+          ================================================= */}
+
+          <div className="mb-8">
+            <Link
+              href="/shop"
+              className="
+                inline-flex
+                items-center
+                gap-2
+                text-xs
+                transition-all
+                duration-300
+                hover:-translate-x-1
+              "
+              style={{
+                color:
+                  '#817A71',
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+              >
+                <path d="M19 12H5" />
+                <path d="M12 19l-7-7 7-7" />
+              </svg>
+
+              <span>
+                العودة إلى المتجر
+              </span>
+            </Link>
+          </div>
+
+          {/* =================================================
+              PRODUCT LAYOUT
+
+              IMPORTANT:
+              LTR layout
+              IMAGE = LEFT
+              INFO = RIGHT
+          ================================================= */}
+
           <div
-            className="relative aspect-square rounded-2xl overflow-hidden bg-white/[0.02] glass"
-            onMouseEnter={stopAutoSlide}
-            onMouseLeave={startAutoSlide}
+            dir="ltr"
+            className="
+              grid
+              grid-cols-1
+              lg:grid-cols-2
+              gap-10
+              lg:gap-16
+              items-start
+            "
           >
-            {images.length > 0 ? (
+            {/* =================================================
+                GALLERY — LEFT
+            ================================================= */}
+
+            <div
+              className="
+                space-y-4
+                min-w-0
+              "
+            >
+              <div
+                className="
+                  relative
+                  aspect-square
+                  overflow-hidden
+                  cursor-zoom-in
+                "
+                style={{
+                  background:
+                    '#EEEAE4',
+
+                  border:
+                    '1px solid rgba(41,42,40,.08)',
+
+                  boxShadow:
+                    '0 20px 55px rgba(41,42,40,.07)',
+                }}
+                onMouseEnter={
+                  stopAutoSlide
+                }
+                onMouseLeave={
+                  startAutoSlide
+                }
+                onClick={() =>
+                  openLightbox(
+                    selectedImage
+                  )
+                }
+              >
+                {images.length >
+                0 ? (
+                  <>
+                    {images.map(
+                      (
+                        img,
+                        i
+                      ) => (
+                        <img
+                          key={i}
+                          src={img}
+                          alt={
+                            product.title
+                          }
+                          className={`
+                            absolute
+                            inset-0
+                            w-full
+                            h-full
+                            object-cover
+                            transition-all
+                            duration-[800ms]
+                            ease-[cubic-bezier(0.4,0,0.2,1)]
+                            ${
+                              selectedImage ===
+                              i
+                                ? 'opacity-100 scale-100'
+                                : 'opacity-0 scale-[1.04]'
+                            }
+                          `}
+                        />
+                      )
+                    )}
+
+                    <div
+                      className="
+                        absolute
+                        inset-0
+                        pointer-events-none
+                      "
+                      style={{
+                        background:
+                          'linear-gradient(180deg, rgba(41,42,40,.02), rgba(41,42,40,.08))',
+                      }}
+                    />
+                  </>
+                ) : (
+                  <div
+                    className="
+                      w-full
+                      h-full
+                      flex
+                      items-center
+                      justify-center
+                    "
+                    style={{
+                      color:
+                        'rgba(41,42,40,.15)',
+                    }}
+                  >
+                    <svg
+                      width="64"
+                      height="64"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1"
+                    >
+                      <rect
+                        x="3"
+                        y="3"
+                        width="18"
+                        height="18"
+                        rx="2"
+                      />
+
+                      <circle
+                        cx="8.5"
+                        cy="8.5"
+                        r="1.5"
+                      />
+
+                      <path d="M21 15l-5-5L5 21" />
+                    </svg>
+                  </div>
+                )}
+
+                {/* IMAGE ARROWS */}
+
+                {images.length >
+                  1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(
+                        e
+                      ) => {
+                        e.stopPropagation()
+                        prevImage()
+                      }}
+                      className="
+                        absolute
+                        left-4
+                        top-1/2
+                        -translate-y-1/2
+                        w-10
+                        h-10
+                        rounded-full
+                        flex
+                        items-center
+                        justify-center
+                        transition-all
+                        duration-300
+                      "
+                      style={{
+                        background:
+                          'rgba(245,242,237,.82)',
+
+                        border:
+                          '1px solid rgba(41,42,40,.10)',
+
+                        color:
+                          '#5F5A54',
+
+                        boxShadow:
+                          '0 8px 22px rgba(41,42,40,.10)',
+
+                        backdropFilter:
+                          'blur(10px)',
+                      }}
+                      aria-label="Previous image"
+                    >
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(
+                        e
+                      ) => {
+                        e.stopPropagation()
+                        nextImage()
+                      }}
+                      className="
+                        absolute
+                        right-4
+                        top-1/2
+                        -translate-y-1/2
+                        w-10
+                        h-10
+                        rounded-full
+                        flex
+                        items-center
+                        justify-center
+                        transition-all
+                        duration-300
+                      "
+                      style={{
+                        background:
+                          'rgba(245,242,237,.82)',
+
+                        border:
+                          '1px solid rgba(41,42,40,.10)',
+
+                        color:
+                          '#5F5A54',
+
+                        boxShadow:
+                          '0 8px 22px rgba(41,42,40,.10)',
+
+                        backdropFilter:
+                          'blur(10px)',
+                      }}
+                      aria-label="Next image"
+                    >
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+
+                    {/* DOTS */}
+
+                    <div
+                      className="
+                        absolute
+                        bottom-4
+                        left-1/2
+                        -translate-x-1/2
+                        flex
+                        items-center
+                        gap-1.5
+                      "
+                    >
+                      {images.map(
+                        (
+                          _,
+                          i
+                        ) => (
+                          <button
+                            type="button"
+                            key={
+                              i
+                            }
+                            onClick={(
+                              e
+                            ) => {
+                              e.stopPropagation()
+
+                              setSelectedImage(
+                                i
+                              )
+
+                              resetAutoSlide()
+                            }}
+                            className={`
+                              rounded-full
+                              transition-all
+                              duration-500
+                              ${
+                                selectedImage ===
+                                i
+                                  ? 'w-7 h-1.5'
+                                  : 'w-1.5 h-1.5'
+                              }
+                            `}
+                            style={{
+                              background:
+                                selectedImage ===
+                                i
+                                  ? '#B49A68'
+                                  : 'rgba(245,242,237,.65)',
+                            }}
+                            aria-label={`Image ${
+                              i + 1
+                            }`}
+                          />
+                        )
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* THUMBNAILS */}
+
+              {images.length >
+                1 && (
+                <div
+                  className="
+                    flex
+                    gap-3
+                    overflow-x-auto
+                    pb-2
+                  "
+                  style={{
+                    scrollbarWidth:
+                      'none',
+                  }}
+                >
+                  {images.map(
+                    (
+                      img,
+                      i
+                    ) => (
+                      <button
+                        type="button"
+                        key={i}
+                        onClick={() => {
+                          setSelectedImage(
+                            i
+                          )
+
+                          resetAutoSlide()
+                        }}
+                        className="
+                          flex-shrink-0
+                          w-[76px]
+                          h-[76px]
+                          overflow-hidden
+                          transition-all
+                          duration-300
+                        "
+                        style={{
+                          border:
+                            selectedImage ===
+                            i
+                              ? '1px solid #B49A68'
+                              : '1px solid rgba(41,42,40,.10)',
+
+                          opacity:
+                            selectedImage ===
+                            i
+                              ? 1
+                              : 0.58,
+
+                          boxShadow:
+                            selectedImage ===
+                            i
+                              ? '0 8px 20px rgba(180,154,104,.16)'
+                              : 'none',
+
+                          background:
+                            '#EEEAE4',
+                        }}
+                      >
+                        <img
+                          src={img}
+                          alt=""
+                          className="
+                            object-cover
+                            w-full
+                            h-full
+                          "
+                        />
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* =================================================
+                PRODUCT INFO — RIGHT
+            ================================================= */}
+
+            <div
+              dir="ltr"
+              className="
+                space-y-7
+                min-w-0
+              "
+            >
+              {/* CATEGORY */}
+
+              <div>
+                <div
+                  className="
+                    flex
+                    items-center
+                    gap-3
+                    mb-4
+                  "
+                >
+                  <span
+                    className="w-8 h-px"
+                    style={{
+                      background:
+                        '#B49A68',
+                    }}
+                  />
+
+                  <span
+                    className="
+                      text-[10px]
+                      tracking-[0.22em]
+                      uppercase
+                    "
+                    style={{
+                      color:
+                        '#A28A61',
+                    }}
+                  >
+                    {
+                      CATEGORY_LABELS[
+                        product.category
+                      ]
+                    }
+                  </span>
+                </div>
+
+                <h1
+                  className="
+                    text-3xl
+                    sm:text-4xl
+                    lg:text-[42px]
+                    font-bold
+                  "
+                  style={{
+                    color:
+                      '#292A28',
+
+                    fontFamily:
+                      'Amiri, serif',
+
+                    lineHeight: 1.25,
+                  }}
+                >
+                  {product.title}
+                </h1>
+
+                {/* PRICE */}
+
+                <div
+                  className="
+                    flex
+                    items-baseline
+                    gap-3
+                    mt-5
+                  "
+                >
+                  <p
+                    className="
+                      text-3xl
+                      font-bold
+                    "
+                    style={{
+                      color:
+                        '#A88C58',
+                    }}
+                  >
+                    {Math.round(
+                      currentPrice
+                    )}{' '}
+                    EGP
+                  </p>
+
+                  {hasSizes && (
+                    <span
+                      className="text-xs"
+                      style={{
+                        color:
+                          '#958D83',
+                      }}
+                    >
+                      Start from{' '}
+                      {Math.round(
+                        minPrice
+                      )}{' '}
+                      EGP
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* DESCRIPTION */}
+
+              {product.description && (
+                <p
+                  className="
+                    leading-[1.9]
+                    text-sm
+                    whitespace-pre-line
+                  "
+                  style={{
+                    color:
+                      '#77716A',
+                  }}
+                >
+                  {
+                    product.description
+                  }
+                </p>
+              )}
+
+              {/* REVIEWS */}
+
+              <div className="pt-1">
+                <InlineReviewList
+                  productId={
+                    product.id
+                  }
+                  reviews={
+                    reviews
+                  }
+                />
+              </div>
+
+              {/* =================================================
+                  SIZES
+              ================================================= */}
+
+              {hasSizes && (
+                <div>
+                  <label
+                    className="
+                      text-[11px]
+                      mb-3
+                      block
+                      uppercase
+                      tracking-[0.12em]
+                    "
+                    style={{
+                      color:
+                        '#8A837A',
+                    }}
+                  >
+                    Size{' '}
+                    <span
+                      className="
+                        normal-case
+                        tracking-normal
+                      "
+                      style={{
+                        color:
+                          '#B0A79D',
+                      }}
+                    >
+                      — المقاس
+                    </span>
+                  </label>
+
+                  <div className="flex flex-wrap gap-2.5">
+                    {parsedSizes.map(
+                      (
+                        size: any,
+                        i: number
+                      ) => {
+                        const sizeName =
+                          getSizeName(
+                            size
+                          )
+
+                        const sizePrice =
+                          getSizePrice(
+                            size
+                          )
+
+                        const isSelected =
+                          selectedSize ===
+                          sizeName
+
+                        return (
+                          <button
+                            type="button"
+                            key={
+                              sizeName ||
+                              i
+                            }
+                            onClick={() =>
+                              setSelectedSize(
+                                sizeName
+                              )
+                            }
+                            className="
+                              px-5
+                              py-2.5
+                              transition-all
+                              duration-300
+                            "
+                            style={{
+                              borderRadius:
+                                10,
+
+                              border:
+                                isSelected
+                                  ? '1px solid #B49A68'
+                                  : '1px solid rgba(41,42,40,.11)',
+
+                              background:
+                                isSelected
+                                  ? '#EEEAE4'
+                                  : 'rgba(255,255,255,.28)',
+
+                              color:
+                                isSelected
+                                  ? '#8E7650'
+                                  : '#756E65',
+
+                              boxShadow:
+                                isSelected
+                                  ? '0 8px 22px rgba(180,154,104,.12)'
+                                  : '0 4px 14px rgba(41,42,40,.025)',
+                            }}
+                          >
+                            <span className="block text-sm font-medium">
+                              {
+                                sizeName
+                              }
+                            </span>
+
+                            <span
+                              className="
+                                block
+                                text-[11px]
+                                mt-0.5
+                              "
+                              style={{
+                                color:
+                                  isSelected
+                                    ? '#A28A61'
+                                    : '#9A9288',
+                              }}
+                            >
+                              {Math.round(
+                                sizePrice
+                              )}{' '}
+                              EGP
+                            </span>
+                          </button>
+                        )
+                      }
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* =================================================
+                  ADD TO CART
+              ================================================= */}
+
+              <button
+                type="button"
+                onClick={() => {
+                  addToCart(
+                    product
+                  )
+
+                  toast.success(
+                    'Added to cart!'
+                  )
+                }}
+                className="
+                  inline-flex
+                  items-center
+                  justify-center
+                  gap-2.5
+                  px-7
+                  py-3.5
+                  text-sm
+                  font-semibold
+                  transition-all
+                  duration-300
+                  hover:-translate-y-0.5
+                "
+                style={{
+                  background:
+                    '#292A28',
+
+                  color:
+                    '#F5F2ED',
+
+                  border:
+                    '1px solid #292A28',
+
+                  boxShadow:
+                    '0 10px 25px rgba(41,42,40,.12)',
+                }}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+
+                Add to Cart
+              </button>
+
+              {/* =================================================
+                  SHIPPING FORM
+
+                  Layout remains LTR,
+                  Arabic labels remain unchanged.
+              ================================================= */}
+
+              <div
+                className="
+                  p-6
+                  sm:p-7
+                  space-y-6
+                "
+                style={{
+                  background:
+                    'rgba(255,255,255,.30)',
+
+                  border:
+                    '1px solid rgba(41,42,40,.08)',
+
+                  boxShadow:
+                    '0 18px 45px rgba(41,42,40,.045)',
+
+                  backdropFilter:
+                    'blur(12px)',
+                }}
+              >
+                {/* FORM HEADER */}
+
+                <div className="flex items-center gap-3">
+                  <div
+                    className="
+                      w-9
+                      h-9
+                      flex
+                      items-center
+                      justify-center
+                      rounded-full
+                    "
+                    style={{
+                      background:
+                        'rgba(180,154,104,.10)',
+
+                      color:
+                        '#A88C58',
+                    }}
+                  >
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                    >
+                      <path d="M16 3h5v5M21 8l-7 7M8 21H3v-5M3 16l7-7" />
+                    </svg>
+                  </div>
+
+                  <div>
+                    <h3
+                      className="
+                        font-semibold
+                        text-sm
+                      "
+                      style={{
+                        color:
+                          '#292A28',
+                      }}
+                    >
+                      Shipping Details
+                    </h3>
+
+                    <span
+                      className="text-[11px]"
+                      style={{
+                        color:
+                          '#9A9288',
+                      }}
+                    >
+                      بيانات الشحن
+                    </span>
+                  </div>
+                </div>
+
+                {/* INPUTS */}
+
+                <div
+                  className="
+                    grid
+                    grid-cols-1
+                    sm:grid-cols-2
+                    gap-4
+                  "
+                >
+                  {/* FULL NAME */}
+
+                  <div>
+                    <label
+                      className="
+                        text-[10px]
+                        mb-1.5
+                        block
+                        uppercase
+                        tracking-[0.12em]
+                      "
+                      style={{
+                        color:
+                          '#8B837A',
+                      }}
+                    >
+                      Full Name
+
+                      <span
+                        className="
+                          normal-case
+                          tracking-normal
+                        "
+                        style={{
+                          color:
+                            '#AAA198',
+                        }}
+                      >
+                        {' '}
+                        — الاسم بالكامل
+                      </span>
+                    </label>
+
+                    <input
+                      type="text"
+                      value={
+                        fullName
+                      }
+                      onChange={(
+                        e
+                      ) =>
+                        setFullName(
+                          e.target
+                            .value
+                        )
+                      }
+                      className="
+                        w-full
+                        h-11
+                        px-4
+                        outline-none
+                        transition-all
+                        duration-300
+                      "
+                      style={{
+                        background:
+                          'rgba(245,242,237,.72)',
+
+                        border:
+                          '1px solid rgba(41,42,40,.10)',
+
+                        color:
+                          '#292A28',
+                      }}
+                      placeholder="Enter your full name"
+                    />
+                  </div>
+
+                  {/* PHONE */}
+
+                  <div>
+                    <label
+                      className="
+                        text-[10px]
+                        mb-1.5
+                        block
+                        uppercase
+                        tracking-[0.12em]
+                      "
+                      style={{
+                        color:
+                          '#8B837A',
+                      }}
+                    >
+                      Phone Number
+
+                      <span
+                        className="
+                          normal-case
+                          tracking-normal
+                        "
+                        style={{
+                          color:
+                            '#AAA198',
+                        }}
+                      >
+                        {' '}
+                        — رقم الهاتف
+                      </span>
+                    </label>
+
+                    <input
+                      type="tel"
+                      value={
+                        phone
+                      }
+                      onChange={(
+                        e
+                      ) =>
+                        setPhone(
+                          e.target
+                            .value
+                        )
+                      }
+                      className="
+                        w-full
+                        h-11
+                        px-4
+                        outline-none
+                        transition-all
+                        duration-300
+                      "
+                      style={{
+                        background:
+                          'rgba(245,242,237,.72)',
+
+                        border:
+                          '1px solid rgba(41,42,40,.10)',
+
+                        color:
+                          '#292A28',
+                      }}
+                      placeholder="01xxxxxxxxx"
+                    />
+                  </div>
+
+                  {/* ADDRESS */}
+
+                  <div className="sm:col-span-2">
+                    <label
+                      className="
+                        text-[10px]
+                        mb-1.5
+                        block
+                        uppercase
+                        tracking-[0.12em]
+                      "
+                      style={{
+                        color:
+                          '#8B837A',
+                      }}
+                    >
+                      Shipping Address
+
+                      <span
+                        className="
+                          normal-case
+                          tracking-normal
+                        "
+                        style={{
+                          color:
+                            '#AAA198',
+                        }}
+                      >
+                        {' '}
+                        — عنوان الشحن
+                      </span>
+                    </label>
+
+                    <textarea
+                      value={
+                        address
+                      }
+                      onChange={(
+                        e
+                      ) =>
+                        setAddress(
+                          e.target
+                            .value
+                        )
+                      }
+                      className="
+                        w-full
+                        min-h-[84px]
+                        px-4
+                        py-3
+                        outline-none
+                        resize-none
+                        transition-all
+                        duration-300
+                      "
+                      style={{
+                        background:
+                          'rgba(245,242,237,.72)',
+
+                        border:
+                          '1px solid rgba(41,42,40,.10)',
+
+                        color:
+                          '#292A28',
+                      }}
+                      placeholder="City, District, Street, Building No."
+                    />
+                  </div>
+                </div>
+
+                {/* DIVIDER */}
+
+                <div
+                  className="h-px"
+                  style={{
+                    background:
+                      'rgba(41,42,40,.08)',
+                  }}
+                />
+
+                {/* QUANTITY / TOTAL */}
+
+                <div
+                  className="
+                    flex
+                    flex-col
+                    sm:flex-row
+                    items-start
+                    sm:items-center
+                    justify-between
+                    gap-5
+                  "
+                >
+                  {/* QUANTITY */}
+
+                  <div>
+                    <label
+                      className="
+                        text-[10px]
+                        mb-2
+                        block
+                        uppercase
+                        tracking-[0.12em]
+                      "
+                      style={{
+                        color:
+                          '#8B837A',
+                      }}
+                    >
+                      Quantity
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setQuantity(
+                            Math.max(
+                              1,
+                              quantity -
+                                1
+                            )
+                          )
+                        }
+                        disabled={
+                          quantity <=
+                          1
+                        }
+                        className="
+                          w-10
+                          h-10
+                          flex
+                          items-center
+                          justify-center
+                          transition-all
+                          duration-300
+                        "
+                        style={{
+                          background:
+                            'rgba(255,255,255,.34)',
+
+                          border:
+                            '1px solid rgba(41,42,40,.10)',
+
+                          color:
+                            '#686158',
+
+                          opacity:
+                            quantity <=
+                            1
+                              ? 0.4
+                              : 1,
+                        }}
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                        >
+                          <path d="M5 12h14" />
+                        </svg>
+                      </button>
+
+                      <span
+                        className="
+                          text-base
+                          font-semibold
+                          w-10
+                          text-center
+                        "
+                        style={{
+                          color:
+                            '#292A28',
+                        }}
+                      >
+                        {
+                          quantity
+                        }
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setQuantity(
+                            quantity +
+                              1
+                          )
+                        }
+                        className="
+                          w-10
+                          h-10
+                          flex
+                          items-center
+                          justify-center
+                          transition-all
+                          duration-300
+                        "
+                        style={{
+                          background:
+                            'rgba(255,255,255,.34)',
+
+                          border:
+                            '1px solid rgba(41,42,40,.10)',
+
+                          color:
+                            '#686158',
+                        }}
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                        >
+                          <path d="M12 5v14M5 12h14" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* TOTAL */}
+
+                  <div
+                    className="
+                      w-full
+                      sm:w-auto
+                      text-left
+                      sm:text-right
+                    "
+                  >
+                    <label
+                      className="
+                        text-[10px]
+                        mb-1.5
+                        block
+                        uppercase
+                        tracking-[0.12em]
+                      "
+                      style={{
+                        color:
+                          '#8B837A',
+                      }}
+                    >
+                      Total
+                    </label>
+
+                    <span
+                      className="
+                        font-bold
+                        text-2xl
+                      "
+                      style={{
+                        color:
+                          '#A88C58',
+                      }}
+                    >
+                      {Math.round(
+                        currentPrice *
+                          quantity
+                      )}{' '}
+                      EGP
+                    </span>
+                  </div>
+                </div>
+
+                {/* CONFIRM */}
+
+                <button
+                  type="button"
+                  onClick={
+                    handleOrder
+                  }
+                  disabled={
+                    loading
+                  }
+                  className="
+                    w-full
+                    py-4
+                    text-sm
+                    font-semibold
+                    transition-all
+                    duration-300
+                    hover:-translate-y-0.5
+                    disabled:opacity-40
+                    disabled:cursor-not-allowed
+                  "
+                  style={{
+                    background:
+                      '#292A28',
+
+                    color:
+                      '#F5F2ED',
+
+                    boxShadow:
+                      '0 12px 28px rgba(41,42,40,.12)',
+                  }}
+                >
+                  {loading ? (
+                    <span
+                      className="
+                        inline-block
+                        w-5
+                        h-5
+                        border-2
+                        rounded-full
+                        animate-spin
+                      "
+                      style={{
+                        borderColor:
+                          'rgba(245,242,237,.25)',
+
+                        borderTopColor:
+                          '#B49A68',
+                      }}
+                    />
+                  ) : (
+                    'Confirm Order'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* =====================================================
+          LIGHTBOX
+      ===================================================== */}
+
+      {isLightboxOpen && (
+        <div
+          className="
+            fixed
+            inset-0
+            z-[100]
+            flex
+            items-center
+            justify-center
+          "
+          style={{
+            background:
+              'rgba(35,33,30,.96)',
+          }}
+          onClick={
+            closeLightbox
+          }
+        >
+          {/* CLOSE */}
+
+          <button
+            type="button"
+            onClick={
+              closeLightbox
+            }
+            className="
+              absolute
+              top-5
+              right-5
+              z-[110]
+              w-10
+              h-10
+              rounded-full
+              flex
+              items-center
+              justify-center
+              transition-all
+            "
+            style={{
+              background:
+                'rgba(245,242,237,.10)',
+
+              border:
+                '1px solid rgba(245,242,237,.14)',
+
+              color:
+                'rgba(245,242,237,.85)',
+            }}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
+              <path d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          {/* COUNTER */}
+
+          <div
+            className="
+              absolute
+              top-6
+              left-1/2
+              -translate-x-1/2
+              text-xs
+              z-[110]
+            "
+            style={{
+              color:
+                'rgba(245,242,237,.55)',
+            }}
+          >
+            {lightboxIndex +
+              1}{' '}
+            / {images.length}
+          </div>
+
+          {/* PREVIOUS */}
+
+          {images.length >
+            1 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                lightboxPrev()
+              }}
+              className="
+                absolute
+                left-4
+                top-1/2
+                -translate-y-1/2
+                z-[110]
+                w-12
+                h-12
+                rounded-full
+                flex
+                items-center
+                justify-center
+              "
+              style={{
+                background:
+                  'rgba(245,242,237,.08)',
+
+                border:
+                  '1px solid rgba(245,242,237,.12)',
+
+                color:
+                  '#F5F2ED',
+              }}
+            >
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+
+          {/* NEXT */}
+
+          {images.length >
+            1 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                lightboxNext()
+              }}
+              className="
+                absolute
+                right-4
+                top-1/2
+                -translate-y-1/2
+                z-[110]
+                w-12
+                h-12
+                rounded-full
+                flex
+                items-center
+                justify-center
+              "
+              style={{
+                background:
+                  'rgba(245,242,237,.08)',
+
+                border:
+                  '1px solid rgba(245,242,237,.12)',
+
+                color:
+                  '#F5F2ED',
+              }}
+            >
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          )}
+
+          {/* IMAGE */}
+
+          <div
+            className="
+              w-full
+              h-full
+              flex
+              items-center
+              justify-center
+              overflow-hidden
+              p-8
+              sm:p-12
+            "
+            onWheel={
+              handleWheel
+            }
+            onMouseDown={
+              handleMouseDown
+            }
+            onMouseMove={
+              handleMouseMove
+            }
+            onMouseUp={
+              handleMouseUp
+            }
+            onMouseLeave={
+              handleMouseUp
+            }
+            style={{
+              cursor:
+                zoom > 1
+                  ? isDragging
+                    ? 'grabbing'
+                    : 'grab'
+                  : 'zoom-in',
+            }}
+          >
+            {images[
+              lightboxIndex
+            ] && (
+              <img
+                src={
+                  images[
+                    lightboxIndex
+                  ]
+                }
+                alt={
+                  product.title
+                }
+                draggable={
+                  false
+                }
+                onClick={(e) =>
+                  e.stopPropagation()
+                }
+                className="
+                  max-w-full
+                  max-h-full
+                  object-contain
+                  select-none
+                  pointer-events-none
+                "
+                style={{
+                  transform: `scale(${zoom}) translate(${
+                    position.x /
+                    zoom
+                  }px, ${
+                    position.y /
+                    zoom
+                  }px)`,
+
+                  transition:
+                    isDragging
+                      ? 'transform 0s linear'
+                      : 'transform .2s ease-out',
+                }}
+              />
+            )}
+          </div>
+
+          {/* LIGHTBOX THUMBNAILS */}
+
+          {images.length >
+            1 && (
+            <div
+              className="
+                absolute
+                bottom-5
+                left-1/2
+                -translate-x-1/2
+                flex
+                gap-2
+                z-[110]
+                max-w-[90vw]
+                overflow-x-auto
+                pb-1
+              "
+            >
+              {images.map(
+                (
+                  img,
+                  i
+                ) => (
+                  <button
+                    type="button"
+                    key={i}
+                    onClick={(e) => {
+                      e.stopPropagation()
+
+                      setLightboxIndex(
+                        i
+                      )
+
+                      setZoom(
+                        1
+                      )
+
+                      setPosition(
+                        {
+                          x: 0,
+                          y: 0,
+                        }
+                      )
+                    }}
+                    className="
+                      w-12
+                      h-12
+                      flex-shrink-0
+                      overflow-hidden
+                      transition-all
+                    "
+                    style={{
+                      border:
+                        lightboxIndex ===
+                        i
+                          ? '1px solid #B49A68'
+                          : '1px solid rgba(245,242,237,.18)',
+
+                      opacity:
+                        lightboxIndex ===
+                        i
+                          ? 1
+                          : 0.5,
+                    }}
+                  >
+                    <img
+                      src={img}
+                      alt=""
+                      className="
+                        w-full
+                        h-full
+                        object-cover
+                      "
+                    />
+                  </button>
+                )
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* =====================================================
+          SUCCESS MODAL
+      ===================================================== */}
+
+      {isSuccessModalOpen && (
+        <div
+          className="
+            fixed
+            inset-0
+            z-[120]
+            flex
+            items-center
+            justify-center
+            p-4
+          "
+        >
+          {/* BACKDROP */}
+
+          <div
+            className="
+              absolute
+              inset-0
+              backdrop-blur-sm
+            "
+            style={{
+              background:
+                'rgba(41,42,40,.48)',
+            }}
+            onClick={() =>
+              setIsSuccessModalOpen(
+                false
+              )
+            }
+          />
+
+          {/* MODAL */}
+
+          <div
+            className="
+              relative
+              p-8
+              text-center
+              max-w-sm
+              w-full
+              animate-fade-in
+            "
+            style={{
+              background:
+                '#F5F2ED',
+
+              border:
+                '1px solid rgba(41,42,40,.10)',
+
+              boxShadow:
+                '0 30px 80px rgba(41,42,40,.20)',
+            }}
+          >
+            {/* SUCCESS ICON */}
+
+            <div
+              className="
+                w-16
+                h-16
+                rounded-full
+                flex
+                items-center
+                justify-center
+                mx-auto
+                mb-5
+              "
+              style={{
+                background:
+                  'rgba(180,154,104,.10)',
+
+                border:
+                  '1px solid rgba(180,154,104,.25)',
+
+                color:
+                  '#A88C58',
+              }}
+            >
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+              >
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </div>
+
+            <h2
+              className="
+                text-2xl
+                font-bold
+                mb-2
+              "
+              style={{
+                color:
+                  '#292A28',
+
+                fontFamily:
+                  'Amiri, serif',
+              }}
+            >
+              Order Submitted!
+            </h2>
+
+            {user ? (
               <>
-                {images.map((img, i) => (
-                  <img key={i} src={img} alt={product.title} className={`absolute inset-0 w-full h-full object-cover transition-all duration-[800ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${selectedImage === i ? 'opacity-100 scale-100' : 'opacity-0 scale-[1.08]'}`} />
-                ))}
-                <div className="absolute inset-0 bg-black/10 pointer-events-none" />
+                <p
+                  className="
+                    text-sm
+                    mb-8
+                    leading-relaxed
+                  "
+                  style={{
+                    color:
+                      '#77716A',
+                  }}
+                >
+                  تم تقديم طلبك
+                  بنجاح وسيتم
+                  التواصل معك
+                  للتأكيد. يمكنك
+                  متابعة حالة
+                  طلبك من حسابك.
+                </p>
+
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSuccessModalOpen(
+                        false
+                      )
+
+                      router.push(
+                        '/profile'
+                      )
+                    }}
+                    className="
+                      w-full
+                      flex
+                      items-center
+                      justify-center
+                      gap-2
+                      py-3.5
+                      text-sm
+                      font-semibold
+                      transition-all
+                      duration-300
+                      hover:-translate-y-0.5
+                    "
+                    style={{
+                      background:
+                        '#292A28',
+
+                      color:
+                        '#F5F2ED',
+                    }}
+                  >
+                    View My Orders
+
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                    >
+                      <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSuccessModalOpen(
+                        false
+                      )
+
+                      router.push(
+                        '/shop'
+                      )
+                    }}
+                    className="
+                      w-full
+                      py-3.5
+                      text-sm
+                      font-medium
+                      transition-all
+                    "
+                    style={{
+                      background:
+                        'transparent',
+
+                      border:
+                        '1px solid rgba(41,42,40,.12)',
+
+                      color:
+                        '#686158',
+                    }}
+                  >
+                    Continue Shopping
+                  </button>
+                </div>
               </>
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-white/10">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
-              </div>
-            )}
-
-            {images.length > 1 && (
               <>
-                <button onClick={prevImage} className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm border border-white/[0.1] flex items-center justify-center text-white/70 hover:bg-black/60 hover:text-white transition-all duration-200">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 19l-7-7 7-7" /></svg>
-                </button>
-                <button onClick={nextImage} className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm border border-white/[0.1] flex items-center justify-center text-white/70 hover:bg-black/60 hover:text-white transition-all duration-200">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5l7 7-7 7" /></svg>
-                </button>
-                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                  {images.map((_, i) => (
-                    <button key={i} onClick={() => { setSelectedImage(i); resetAutoSlide() }} className={`rounded-full transition-all duration-500 ease-out ${selectedImage === i ? 'w-6 h-1.5 bg-gold' : 'w-1.5 h-1.5 bg-white/30 hover:bg-white/50'}`} />
-                  ))}
+                <p
+                  className="
+                    text-sm
+                    mb-8
+                    leading-relaxed
+                  "
+                  style={{
+                    color:
+                      '#77716A',
+                  }}
+                >
+                  أنشئ حساب وسجل
+                  دخول لمتابعة
+                  طلبك وحفظ بياناتك
+                  لتسهيل عملية
+                  الشراء في المرات
+                  القادمة.
+                </p>
+
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSuccessModalOpen(
+                        false
+                      )
+
+                      router.push(
+                        '/auth/login'
+                      )
+                    }}
+                    className="
+                      w-full
+                      flex
+                      items-center
+                      justify-center
+                      gap-2
+                      py-3.5
+                      text-sm
+                      font-semibold
+                      transition-all
+                      duration-300
+                      hover:-translate-y-0.5
+                    "
+                    style={{
+                      background:
+                        '#292A28',
+
+                      color:
+                        '#F5F2ED',
+                    }}
+                  >
+                    Create Account / Login
+
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                    >
+                      <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSuccessModalOpen(
+                        false
+                      )
+
+                      router.push(
+                        '/shop'
+                      )
+                    }}
+                    className="
+                      w-full
+                      py-3.5
+                      text-sm
+                      font-medium
+                      transition-all
+                    "
+                    style={{
+                      background:
+                        'transparent',
+
+                      border:
+                        '1px solid rgba(41,42,40,.12)',
+
+                      color:
+                        '#686158',
+                    }}
+                  >
+                    متابعة التسوق
+                  </button>
                 </div>
               </>
             )}
           </div>
-
-          {images.length > 1 && (
-            <div className="flex gap-3 overflow-x-auto pb-2">
-              {images.map((img, i) => (
-                <button key={i} onClick={() => { setSelectedImage(i); resetAutoSlide() }} className={`flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 transition-all duration-300 ${selectedImage === i ? 'border-gold shadow-[0_0_16px_rgba(201,169,110,0.2)]' : 'border-white/[0.08] opacity-50 hover:opacity-80'}`}>
-                  <img src={img} alt="" className="object-cover w-full h-full" />
-                </button>
-              ))}
-            </div>
-          )}
         </div>
-        
-
-        {/* ===== ٢. التفاصيل + ٣. الأزرار ===== */}
-        <div className="space-y-2">
-          <div>
-            <span className="text-gold/50 text-xs tracking-wider uppercase">{CATEGORY_LABELS[product.category]}</span>
-            <h1 className="text-3xl sm:text-4xl font-bold text-white mt-2">{product.title}</h1>
-            <p className="text-3xl font-bold text-gold mt-4">{product.price} LE</p>
-          </div>
-
-                   {/* ===== اختيار المقاسات (تحت السعر وفوق الوصف) ===== */}
-          {sizes.length > 0 && (
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <label className="text-white/50 text-xs font-medium">Size</label>
-                {selectedSize && (
-                  <button onClick={() => setSelectedSize(null)} className="text-white/20 hover:text-white/50 text-[11px] transition-colors">
-                    Clear
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {sizes.map((size) => (
-                  <button
-                    key={size}
-                    onClick={() => setSelectedSize(size)}
-                    className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 border ${
-                      selectedSize === size
-                        ? 'bg-gold/10 border-gold/30 text-gold shadow-[0_0_12px_rgba(201,169,110,0.1)]'
-                        : 'bg-white/[0.02] border-white/[0.08] text-white/50 hover:text-white/80 hover:border-white/[0.15]'
-                    }`}
-                  >
-                    {size}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-
-
-          {product.description && (
-            <p className="text-white/50 leading-relaxed text-sm whitespace-pre-line">{product.description}</p>
-          )}
-
-          {/* الكمية + السعر + الأزرار */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5 bg-white/[0.03] border border-white/[0.08] rounded-xl p-1">
-                <button onClick={() => setQuantity(Math.max(1, quantity - 1))} disabled={quantity <= 1} className="w-10 h-10 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/[0.06] transition-all disabled:opacity-25">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14" /></svg>
-                </button>
-                <span className="text-lg text-white font-semibold w-8 text-center tabular-nums">{quantity}</span>
-                <button onClick={() => setQuantity(quantity + 1)} disabled={quantity >= (product.stock ?? 0) || product.is_sold_out} className="w-10 h-10 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/[0.06] transition-all disabled:opacity-25">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
-                </button>
-              </div>
-              <div className="flex-1" />
-              <span className="text-gold font-bold text-xl tabular-nums">
-                {(product.price * quantity).toFixed(2)} LE
-              </span>
-            </div>
-                      {/* حالة عدم التوفر */}
-          {(product.is_sold_out || (product.stock ?? 0) <= 0) && (
-            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 w-fit">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
-                <circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" />
-              </svg>
-              <span className="text-red-400 text-sm font-semibold">Sold Out</span>
-            </div>
-          )}
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleAction('cart')}
-                disabled={product.is_sold_out || (product.stock ?? 0) <= 0}
-                className="flex-1 inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl text-sm font-semibold bg-white/[0.04] border border-white/[0.1] text-white/80 hover:bg-white/[0.08] hover:border-white/[0.16] transition-all duration-300 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
-                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-                </svg>
-                Add to Cart
-              </button>
-
-              <button
-                onClick={() => handleAction('buy')}
-                disabled={product.is_sold_out || (product.stock ?? 0) <= 0}
-                className="flex-1 inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl text-sm font-semibold transition-all duration-300 hover:shadow-[0_0_24px_rgba(201,169,110,0.3)] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ background: 'linear-gradient(135deg, #C9A84C, #A88A3A)', color: '#0A0A08' }}
-              >
-                Buy It Now
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ===== ٤. التقييمات ===== */}
-      <div className="mt-10 pt-10 border-t border-white/[0.06]">
-        <InlineReviewList productId={product.id} reviews={initialReviews} />
-      </div>
-    </div>
+      )}
+    </>
   )
 }

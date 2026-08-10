@@ -1,32 +1,145 @@
 export default function Footer() {
   return (
-    <footer className="border-t border-white/[0.05] mt-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gold/10 border border-gold/30 flex items-center justify-center">
-              <span className="text-gold font-bold text-sm">إ</span>
-            </div>
-            <div>
-              <p className="text-white font-bold text-sm">إطار - Etaar</p>
-              <p className="text-white/30 text-xs">كل لحظة تستحق إطار</p>
-            </div>
+    <footer
+      className="mt-0 border-t"
+      style={{
+        background: '#F5F2ED',
+        borderColor: 'rgba(41,42,40,0.10)',
+      }}
+    >
+      <div className="max-w-3xl mx-auto px-6 py-8 sm:py-12 flex flex-col items-center text-center gap-6">
+        
+        {/* Brand */}
+        <div className="flex flex-col items-center gap-3">
+          <div
+            className="w-10 h-10 flex items-center justify-center transition-all duration-300"
+            style={{
+              border: '1px solid rgba(180,154,104,0.45)',
+              background: 'rgba(180,154,104,0.06)',
+            }}
+          >
+            <span
+              className="font-bold text-lg"
+              style={{
+                color: '#B49A68',
+                fontFamily: 'Amiri, serif',
+              }}
+            >
+              إ
+            </span>
           </div>
-          <div className="flex items-center gap-6">
-            <a href="#" className="text-white/30 hover:text-gold transition-colors duration-200">
-              <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+          <div>
+            <p
+              className="font-bold text-sm"
+              style={{
+                color: '#292A28',
+                fontFamily: 'Tajawal, sans-serif',
+              }}
+            >
+              JIDAAR — إطار
+            </p>
+            <p
+              className="text-xs mt-1"
+              style={{
+                color: '#9B9388',
+                fontFamily: 'Tajawal, sans-serif',
+              }}
+            >
+              كل لحظة تستحق إطار
+            </p>
+          </div>
+        </div>
+
+        {/* Social Icons */}
+        <div className="flex items-center gap-3">
+          {/* Instagram */}
+          <a href="#" aria-label="Instagram" className="group w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-black/5" style={{ color: '#91897E' }}>
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24" className="transition-all duration-300 group-hover:text-[#B49A68] group-hover:-translate-y-0.5">
+              <rect x="3" y="3" width="18" height="18" rx="5" />
+              <circle cx="12" cy="12" r="4" />
+              <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+            </svg>
+          </a>
+
+          {/* Facebook */}
+          <a href="#" aria-label="Facebook" className="group w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-black/5" style={{ color: '#91897E' }}>
+            <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24" className="transition-all duration-300 group-hover:text-[#B49A68] group-hover:-translate-y-0.5">
+              <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073c0 6.02 4.388 11.04 10.125 11.927v-8.437H7.078v-3.49h3.047V9.41c0-3.026 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.98h-1.514c-1.491 0-1.956.93-1.956 1.886v2.258h3.328l-.532 3.49h-2.796V24C19.612 23.113 24 18.093 24 12.073Z" />
+            </svg>
+          </a>
+
+          {/* TikTok */}
+          <a href="#" aria-label="TikTok" className="group w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-black/5" style={{ color: '#91897E' }}>
+            <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24" className="transition-all duration-300 group-hover:text-[#B49A68] group-hover:-translate-y-0.5">
+              <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.46.83-2.86 1.84-3.91 1.23-1.32 3.01-2.08 4.83-2.07.02 1.42-.01 2.84.02 4.26-.67-.18-1.39-.13-2.04.1-.76.27-1.4.86-1.75 1.59-.31.62-.29 1.34-.18 2 .21 1.31 1.37 2.42 2.71 2.56 1.21.13 2.47-.5 3.07-1.57.22-.39.33-.83.34-1.28.03-2.61.02-5.22.02-7.84 0-4.63.01-9.27 0-13.9z" />
+            </svg>
+          </a>
+
+          {/* WhatsApp */}
+          <a href="https://wa.me/201000000000" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="group w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-black/5" style={{ color: '#91897E' }}>
+            <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24" className="transition-all duration-300 group-hover:text-[#B49A68] group-hover:-translate-y-0.5">
+              <path d="M12 0a12 12 0 00-10.35 17.9L0 24l6.3-1.65A12 12 0 1012 0zm0 2a10 10 0 11-5.62 18.33l-.36-.22-3.74.98 1-3.64-.24-.38A10 10 0 0112 2zm5.29 14.5c-.22.6-1.2 1.17-1.66 1.2-.43.04-.97.2-3.13-.64-2.63-1.02-4.3-3.7-4.43-3.88-.13-.17-1.06-1.4-1.06-2.66s.66-1.88.9-2.13c.22-.24.48-.3.64-.3h.46c.15 0 .35-.06.54.42.22.6.75 2.06.82 2.2.06.15.1.32.02.5-.08.17-.12.28-.24.43-.12.15-.25.34-.36.45-.12.12-.24.25-.1.49.14.24.62 1.03 1.33 1.66.91.81 1.68 1.06 1.92 1.18.24.12.38.1.52-.06.14-.16.6-.7.76-.94.16-.24.32-.2.54-.12.22.08 1.4.66 1.64.78.24.12.4.18.46.28.06.1.06.58-.16 1.18z"/>
+            </svg>
+          </a>
+        </div>
+
+        {/* Divider */}
+        <div className="w-full max-w-xs h-px" style={{ background: 'rgba(41,42,40,0.09)' }} />
+
+        {/* Contact & Statement */}
+        <div className="flex flex-col items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-6 text-[13px]" style={{ fontFamily: 'Tajawal, sans-serif' }}>
+            <a href="https://wa.me/201000000000" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[#292A28] hover:text-[#B49A68] transition-colors duration-300">
+              <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 0a12 12 0 00-10.35 17.9L0 24l6.3-1.65A12 12 0 1012 0zm0 2a10 10 0 11-5.62 18.33l-.36-.22-3.74.98 1-3.64-.24-.38A10 10 0 0112 2zm5.29 14.5c-.22.6-1.2 1.17-1.66 1.2-.43.04-.97.2-3.13-.64-2.63-1.02-4.3-3.7-4.43-3.88-.13-.17-1.06-1.4-1.06-2.66s.66-1.88.9-2.13c.22-.24.48-.3.64-.3h.46c.15 0 .35-.06.54.42.22.6.75 2.06.82 2.2.06.15.1.32.02.5-.08.17-.12.28-.24.43-.12.15-.25.34-.36.45-.12.12-.24.25-.1.49.14.24.62 1.03 1.33 1.66.91.81 1.68 1.06 1.92 1.18.24.12.38.1.52-.06.14-.16.6-.7.76-.94.16-.24.32-.2.54-.12.22.08 1.4.66 1.64.78.24.12.4.18.46.28.06.1.06.58-.16 1.18z"/>
+              </svg>
+              واتساب: 100 000 0000
             </a>
-            <a href="#" className="text-white/30 hover:text-gold transition-colors duration-200">
-              <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/></svg>
-            </a>
-            <a href="#" className="text-white/30 hover:text-gold transition-colors duration-200">
-              <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            <span className="hidden sm:block w-1 h-1 rounded-full bg-[#9B9388]/50"></span>
+            <a href="mailto:info@jidaar.com" className="flex items-center gap-1.5 text-[#292A28] hover:text-[#B49A68] transition-colors duration-300">
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24">
+                <path d="M3 8l9 6 9-6M3 8v10a2 2 0 002 2h14a2 2 0 002-2V8M3 8l2-2h14l2 2" />
+              </svg>
+              info@jidaar.com
             </a>
           </div>
-          <p className="text-white/20 text-xs">
-            © {new Date().getFullYear()} إطار. جميع الحقوق محفوظة
+
+          <div
+            className="text-center"
+            style={{
+              color: '#A39B91',
+              fontSize: '10px',
+              letterSpacing: '0.28em',
+              fontFamily: 'Tajawal, sans-serif',
+            }}
+          >
+            DESIGNED WALLS · INSPIRED SPACES
+          </div>
+        </div>
+
+        {/* Bottom Row */}
+        <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+          <p
+            className="text-[10px] sm:text-[11px]"
+            style={{
+              color: '#A39B91',
+              fontFamily: 'Tajawal, sans-serif',
+            }}
+          >
+            © {new Date().getFullYear()} JIDAAR — إطار. جميع الحقوق محفوظة
+          </p>
+          <p
+            className="text-[9px] sm:text-[10px]"
+            style={{
+              color: '#B49A68',
+              letterSpacing: '0.12em',
+              fontFamily: 'Tajawal, sans-serif',
+            }}
+          >
+            MADE WITH INTENTION
           </p>
         </div>
+
       </div>
     </footer>
   )

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react' // تم إضافة useEffect
 import { useAuth } from '@/context/AuthContext'
 import { Review, ReviewSummary } from '@/types'
 import StarRating from './StarRating'
@@ -17,6 +17,14 @@ export default function ReviewSection({ productId, initialReviews }: ReviewSecti
   const [reviews, setReviews] = useState<Review[]>(initialReviews)
   const [sortBy, setSortBy] = useState<'recent' | 'highest' | 'lowest'>('recent')
   const formRef = useRef<HTMLDivElement>(null)
+
+  // === تم إضافة هذا الـ useEffect لمزامنة التقييمات عند جلبها من قاعدة البيانات ===
+  useEffect(() => {
+    if (initialReviews && initialReviews.length > 0) {
+      setReviews(initialReviews)
+    }
+  }, [initialReviews])
+  // =================================================================================
 
   const summary: ReviewSummary = useMemo(() => {
     if (reviews.length === 0) {

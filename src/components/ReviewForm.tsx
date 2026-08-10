@@ -22,49 +22,94 @@ export default function ReviewForm({
   onUpdate,
 }: ReviewFormProps) {
   const { user, profile } = useAuth()
-  const [rating, setRating] = useState(userReview?.rating || 0)
-  const [comment, setComment] = useState(userReview?.comment || '')
+
+  const [rating, setRating] = useState(
+    userReview?.rating || 0
+  )
+
+  const [comment, setComment] = useState(
+    userReview?.comment || ''
+  )
+
   const [submitting, setSubmitting] = useState(false)
+
+  /*
+  =====================================================
+  SUBMIT REVIEW
+  =====================================================
+  */
 
   const handleSubmit = async () => {
     if (!user) return
+
     if (rating === 0) {
-      toast.error('يرجى اختيار تقييم')
+      toast.error('Please select a rating')
       return
     }
 
     setSubmitting(true)
 
+    /*
+    =====================================================
+    UPDATE EXISTING REVIEW
+    =====================================================
+    */
+
     if (userReview) {
-      // ===== تحديث تقييم موجود =====
-      const { data, error } = await supabase
+      const {
+        data,
+        error,
+      } = await supabase
         .from('reviews')
-        .update({ rating, comment: comment.trim() || null })
+        .update({
+          rating,
+          comment: comment.trim() || null,
+        })
         .eq('id', userReview.id)
         .select()
         .single()
 
       if (error) {
-        console.error('UPDATE REVIEW ERROR:', error)
         if (error.code === '42501') {
-          toast.error('ليس لديك صلاحية تعديل هذا التقييم')
+          toast.error(
+            'You do not have permission to edit this review'
+          )
         } else {
-          toast.error(error.message || 'حدث خطأ أثناء التحديث')
+          toast.error(
+            error.message ||
+              'Something went wrong while updating your review'
+          )
         }
       } else {
         const reviewWithProfile: Review = {
           ...data,
           profile: {
-            full_name: profile?.full_name || null,
-            avatar_url: profile?.avatar_url || null,
+            full_name:
+              profile?.full_name || null,
+            avatar_url:
+              profile?.avatar_url || null,
           },
         }
-        toast.success('تم تحديث تقييمك')
+
+        toast.success(
+          'Your review has been updated'
+        )
+
         onUpdate(reviewWithProfile)
       }
-    } else {
-      // ===== إضافة تقييم جديد =====
-      const { data, error } = await supabase
+    }
+
+    /*
+    =====================================================
+    CREATE NEW REVIEW
+    =====================================================
+    */
+
+    else {
+      const {
+        data,
+        error,
+      } = await supabase
         .from('reviews')
         .insert({
           product_id: productId,
@@ -76,24 +121,37 @@ export default function ReviewForm({
         .single()
 
       if (error) {
-        console.error('INSERT REVIEW ERROR:', error)
         if (error.code === '23505') {
-          toast.error('لقد قمت بتقييم هذا المنتج بالفعل')
+          toast.error(
+            'You have already reviewed this product'
+          )
         } else if (error.code === '42501') {
-          toast.error('يجب تسجيل الدخول أولاً')
+          toast.error(
+            'Please sign in to leave a review'
+          )
         } else {
-          toast.error(error.message || 'حدث خطأ أثناء إرسال التقييم')
+          toast.error(
+            error.message ||
+              'Something went wrong while submitting your review'
+          )
         }
       } else {
         const reviewWithProfile: Review = {
           ...data,
           profile: {
-            full_name: profile?.full_name || null,
-            avatar_url: profile?.avatar_url || null,
+            full_name:
+              profile?.full_name || null,
+            avatar_url:
+              profile?.avatar_url || null,
           },
         }
-        toast.success('شكراً لتقييمك!')
+
+        toast.success(
+          'Thank you for your review!'
+        )
+
         onSubmit(reviewWithProfile)
+
         setComment('')
         setRating(0)
       }
@@ -102,75 +160,554 @@ export default function ReviewForm({
     setSubmitting(false)
   }
 
+  /*
+  =====================================================
+  NOT LOGGED IN
+  =====================================================
+  */
+
   if (!user) {
     return (
-      <div className="glass p-8 text-center animate-fade-in">
-        <div className="w-12 h-12 rounded-xl bg-gold/10 border border-gold/20 flex items-center justify-center mx-auto mb-4">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-gold">
-            <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+      <div
+        className="p-7 text-center"
+        dir="ltr"
+        style={{
+          background:
+            'rgba(255,255,255,0.42)',
+          border:
+            '1px solid rgba(41,42,40,0.08)',
+          boxShadow:
+            '0 12px 35px rgba(41,42,40,0.035)',
+        }}
+      >
+        {/* ICON */}
+
+        <div
+          className="
+            w-12
+            h-12
+            rounded-full
+            mx-auto
+            mb-4
+            flex
+            items-center
+            justify-center
+          "
+          style={{
+            background:
+              'rgba(180,154,104,0.09)',
+            border:
+              '1px solid rgba(180,154,104,0.18)',
+            color:
+              '#A88C58',
+          }}
+        >
+          <svg
+            width="21"
+            height="21"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle
+              cx="12"
+              cy="7"
+              r="4"
+            />
           </svg>
         </div>
-        <p className="text-white/50 text-sm mb-4">سجّل دخولك لتتمكن من كتابة تقييم</p>
-        <Link href="/auth/login" className="btn-gold text-sm inline-block">
-          تسجيل الدخول
+
+        {/* MESSAGE */}
+
+        <p
+          className="
+            text-sm
+            font-medium
+            mb-1.5
+          "
+          style={{
+            color:
+              '#292A28',
+          }}
+        >
+          Sign in to write a review
+        </p>
+
+        <p
+          className="
+            text-[11px]
+            mb-5
+          "
+          style={{
+            color:
+              '#8C847A',
+          }}
+        >
+          Share your experience with this artwork
+        </p>
+
+        {/* LOGIN */}
+
+        <Link
+          href="/auth/login"
+          className="
+            inline-flex
+            items-center
+            justify-center
+            gap-2
+            px-6
+            py-2.5
+            text-xs
+            font-semibold
+            transition-all
+            duration-300
+            hover:-translate-y-0.5
+          "
+          style={{
+            background:
+              '#292A28',
+            color:
+              '#F5F2ED',
+            border:
+              '1px solid #292A28',
+            boxShadow:
+              '0 8px 22px rgba(41,42,40,0.10)',
+          }}
+        >
+          Sign In
+
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          >
+            <path d="M5 12h14" />
+            <path d="M13 6l6 6-6 6" />
+          </svg>
         </Link>
       </div>
     )
   }
 
+  /*
+  =====================================================
+  FORM
+  =====================================================
+  */
+
   return (
-    <div className="glass p-6 space-y-5 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h3 className="text-white font-semibold text-sm">
-          {userReview ? 'تعديل تقييمك' : 'اكتب تقييمك'}
-        </h3>
+    <div
+      className="
+        p-5
+        sm:p-7
+        space-y-7
+      "
+      dir="ltr"
+      style={{
+        background:
+          'rgba(255,255,255,0.44)',
+        border:
+          '1px solid rgba(41,42,40,0.08)',
+        boxShadow:
+          '0 16px 40px rgba(41,42,40,0.04)',
+      }}
+    >
+
+      {/* =================================================
+          HEADER
+      ================================================= */}
+
+      <div
+        className="
+          flex
+          items-start
+          justify-between
+          gap-4
+        "
+      >
+        <div>
+
+          <div
+            className="
+              flex
+              items-center
+              gap-3
+              mb-2
+            "
+          >
+            <span
+              className="
+                w-8
+                h-px
+              "
+              style={{
+                background:
+                  '#B49A68',
+              }}
+            />
+
+            <h3
+              className="
+                text-sm
+                font-semibold
+              "
+              style={{
+                color:
+                  '#292A28',
+                fontFamily:
+                  'Tajawal, sans-serif',
+              }}
+            >
+              {userReview
+                ? 'Edit Your Review'
+                : 'Write a Review'}
+            </h3>
+          </div>
+
+          <p
+            className="
+              text-[11px]
+              leading-relaxed
+            "
+            style={{
+              color:
+                '#8C847A',
+            }}
+          >
+            {userReview
+              ? 'Update your rating and feedback'
+              : 'Share your experience with this artwork'}
+          </p>
+        </div>
+
+        {/* STATUS */}
+
         {userReview && (
-          <span className="text-[10px] text-gold/60 px-2.5 py-1 rounded-full bg-gold/[0.06] border border-gold/10">
-            لقد قمت بالتقييم بالفعل
+          <span
+            className="
+              flex-shrink-0
+              inline-flex
+              items-center
+              gap-1.5
+              px-2.5
+              py-1.5
+              text-[9px]
+              uppercase
+              tracking-[0.08em]
+            "
+            style={{
+              background:
+                'rgba(180,154,104,0.08)',
+              border:
+                '1px solid rgba(180,154,104,0.18)',
+              color:
+                '#A88C58',
+            }}
+          >
+            <span
+              className="
+                w-1.5
+                h-1.5
+                rounded-full
+              "
+              style={{
+                background:
+                  '#B49A68',
+              }}
+            />
+
+            Already Reviewed
           </span>
         )}
       </div>
 
-      <div>
-        <label className="text-white/40 text-xs mb-2.5 block">التقييم</label>
-        <StarRating
-          rating={rating}
-          size={28}
-          interactive
-          onRate={setRating}
-        />
-      </div>
+      {/* =================================================
+          RATING
+      ================================================= */}
 
       <div>
-        <label className="text-white/40 text-xs mb-1.5 block">
-          التعليق{' '}
-          <span className="text-white/20">(اختياري)</span>
+
+        <label
+          className="
+            text-[10px]
+            mb-3
+            block
+            uppercase
+            tracking-[0.12em]
+          "
+          style={{
+            color:
+              '#817A71',
+          }}
+        >
+          Rating
         </label>
+
+        <div
+          className="
+            flex
+            items-center
+            gap-4
+            px-4
+            py-3
+          "
+          style={{
+            background:
+              'rgba(245,242,237,0.95)',
+            border:
+              '1px solid rgba(41,42,40,0.07)',
+          }}
+        >
+          <StarRating
+            rating={rating}
+            size={28}
+            interactive
+            onRate={setRating}
+          />
+
+          {rating > 0 && (
+            <span
+              className="
+                text-xs
+                font-semibold
+              "
+              style={{
+                color:
+                  '#A88C58',
+              }}
+            >
+              {rating}/5
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* =================================================
+          COMMENT
+      ================================================= */}
+
+      <div>
+
+        <label
+          className="
+            text-[10px]
+            mb-2
+            block
+            uppercase
+            tracking-[0.12em]
+          "
+          style={{
+            color:
+              '#817A71',
+          }}
+        >
+          Comment
+
+          <span
+            className="
+              normal-case
+              tracking-normal
+              ml-1
+            "
+            style={{
+              color:
+                '#AAA198',
+            }}
+          >
+            (Optional)
+          </span>
+        </label>
+
         <textarea
           value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          className="input-dark min-h-[100px] resize-none"
-          placeholder="شاركنا رأيك في المنتج..."
+          onChange={(e) =>
+            setComment(e.target.value)
+          }
+          className="
+            w-full
+            min-h-[115px]
+            px-4
+            py-3
+            outline-none
+            resize-none
+            text-sm
+            leading-[1.8]
+            transition-all
+            duration-300
+          "
+          style={{
+            background:
+              'rgba(245,242,237,0.72)',
+            border:
+              '1px solid rgba(41,42,40,0.10)',
+            color:
+              '#292A28',
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor =
+              'rgba(180,154,104,0.55)'
+
+            e.currentTarget.style.boxShadow =
+              '0 0 0 3px rgba(180,154,104,0.07)'
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor =
+              'rgba(41,42,40,0.10)'
+
+            e.currentTarget.style.boxShadow =
+              'none'
+          }}
+          placeholder="Share your thoughts about this artwork..."
           maxLength={500}
         />
-        <p className="text-white/20 text-[10px] mt-1.5 text-left" dir="ltr">
-          {comment.length}/500
-        </p>
+
+        {/* CHARACTER COUNT */}
+
+        <div
+          className="
+            flex
+            justify-end
+            mt-1.5
+          "
+          dir="ltr"
+        >
+          <span
+            className="
+              text-[10px]
+            "
+            style={{
+              color:
+                comment.length >= 450
+                  ? '#A88C58'
+                  : '#AAA198',
+            }}
+          >
+            {comment.length}/500
+          </span>
+        </div>
       </div>
 
+      {/* =================================================
+          DIVIDER
+      ================================================= */}
+
+      <div
+        className="
+          h-px
+          w-full
+        "
+        style={{
+          background:
+            'rgba(41,42,40,0.07)',
+        }}
+      />
+
+      {/* =================================================
+          SUBMIT
+      ================================================= */}
+
       <button
+        type="button"
         onClick={handleSubmit}
-        disabled={submitting || rating === 0}
-        className="btn-gold text-sm disabled:opacity-30 disabled:cursor-not-allowed"
+        disabled={
+          submitting ||
+          rating === 0
+        }
+        className="
+          w-full
+          inline-flex
+          items-center
+          justify-center
+          gap-2
+          py-3.5
+          text-sm
+          font-semibold
+          transition-all
+          duration-300
+          hover:-translate-y-0.5
+          disabled:opacity-40
+          disabled:cursor-not-allowed
+          disabled:hover:translate-y-0
+        "
+        style={{
+          background:
+            '#292A28',
+          color:
+            '#F5F2ED',
+          border:
+            '1px solid #292A28',
+          boxShadow:
+            '0 10px 25px rgba(41,42,40,0.10)',
+        }}
       >
+
         {submitting ? (
-          <span className="inline-block w-4 h-4 border-2 border-base/30 border-t-base rounded-full animate-spin" />
-        ) : userReview ? (
-          'حفظ التعديلات'
+          <span
+            className="
+              inline-block
+              w-4
+              h-4
+              border-2
+              rounded-full
+              animate-spin
+            "
+            style={{
+              borderColor:
+                'rgba(245,242,237,0.25)',
+              borderTopColor:
+                '#B49A68',
+            }}
+          />
         ) : (
-          'إرسال التقييم'
+          <>
+            {userReview
+              ? 'Save Changes'
+              : 'Submit Review'}
+
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            >
+              <path d="M5 12h14" />
+              <path d="M13 6l6 6-6 6" />
+            </svg>
+          </>
         )}
       </button>
+
+      {/* =================================================
+          HELPER TEXT
+      ================================================= */}
+
+      <p
+        className="
+          text-[10px]
+          text-center
+          leading-relaxed
+        "
+        style={{
+          color:
+            '#AAA198',
+        }}
+      >
+        Your review helps us improve and helps
+        others discover the right artwork for
+        their space.
+      </p>
+
     </div>
   )
 }
