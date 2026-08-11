@@ -5,6 +5,7 @@ import Link from 'next/link'
 export default function HeroSection() {
   // ==========================================
   // تحكم في شفافية السواد من هنا
+  // ==========================================
   // 0.00 = بدون سواد
   // 0.30 = خفيف
   // 0.50 = متوسط
@@ -64,6 +65,28 @@ export default function HeroSection() {
           animation: videoReveal 1.4s ease both;
         }
 
+        /* ==========================================
+           MOBILE VIDEO
+        =========================================== */
+
+        .hero-video-mobile {
+          display: block;
+        }
+
+        .hero-video-desktop {
+          display: none;
+        }
+
+        @media (min-width: 769px) {
+          .hero-video-mobile {
+            display: none;
+          }
+
+          .hero-video-desktop {
+            display: block;
+          }
+        }
+
         @media (max-width: 768px) {
           .hero-section {
             min-height: 82vh !important;
@@ -95,11 +118,12 @@ export default function HeroSection() {
       >
 
         {/* ==========================================
-            BACKGROUND VIDEO
+            BACKGROUND VIDEO — MOBILE
+            فيديو الموبايل
         =========================================== */}
 
         <video
-          className="hero-video"
+          className="hero-video hero-video-mobile"
           autoPlay
           muted
           loop
@@ -126,6 +150,44 @@ export default function HeroSection() {
         >
           <source
             src="/videos/jidaar-hero.mp4"
+            type="video/mp4"
+          />
+        </video>
+
+
+        {/* ==========================================
+            BACKGROUND VIDEO — DESKTOP
+            فيديو اللابتوب
+        =========================================== */}
+
+        <video
+          className="hero-video hero-video-desktop"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+
+            inset: 0,
+
+            width: '100%',
+
+            height: '130%',
+
+            objectFit: 'cover',
+
+            objectPosition: 'center',
+
+            zIndex: 0,
+
+            pointerEvents: 'none',
+          }}
+        >
+          <source
+            src="/videos/jidaar-hero-desktop.mp4"
             type="video/mp4"
           />
         </video>
