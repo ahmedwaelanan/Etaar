@@ -41,7 +41,6 @@ export default async function ProductPage({ params }: { params: { id: string } }
   return (
     <ProductDetailClient
       product={productRes.data}
-      reviews={reviewsWithProfiles}
     />
   )
 }
