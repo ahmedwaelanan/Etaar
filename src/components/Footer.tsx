@@ -1,3 +1,5 @@
+import Image from 'next/image'
+
 export default function Footer() {
   return (
     <footer
@@ -15,18 +17,21 @@ export default function Footer() {
             className="w-10 h-10 flex items-center justify-center transition-all duration-300"
             style={{
               border: '1px solid rgba(180,154,104,0.45)',
-              background: 'rgba(180,154,104,0.06)',
             }}
           >
-            <span
-              className="font-bold text-lg"
+            <Image
+              src="/logo/logonav.png"
+              alt="Jidaar"
+              width={105}
+              height={45}
+              priority
               style={{
-                color: '#B49A68',
-                fontFamily: 'Amiri, serif',
+                width: 105,
+                height: 'auto',
+                display: 'block',
+                objectFit: 'contain',
               }}
-            >
-              إ
-            </span>
+            />
           </div>
           <div>
             <p
@@ -36,7 +41,7 @@ export default function Footer() {
                 fontFamily: 'Tajawal, sans-serif',
               }}
             >
-              JIDAAR — إطار
+              جدار — JIDAAR
             </p>
             <p
               className="text-xs mt-1"
@@ -53,7 +58,7 @@ export default function Footer() {
         {/* Social Icons */}
         <div className="flex items-center gap-3">
           {/* Instagram */}
-          <a href="#" aria-label="Instagram" className="group w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-black/5" style={{ color: '#91897E' }}>
+          <a href="https://www.instagram.com/jidaar_eg" aria-label="Instagram" className="group w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-black/5" style={{ color: '#91897E' }}>
             <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24" className="transition-all duration-300 group-hover:text-[#B49A68] group-hover:-translate-y-0.5">
               <rect x="3" y="3" width="18" height="18" rx="5" />
               <circle cx="12" cy="12" r="4" />
@@ -62,7 +67,7 @@ export default function Footer() {
           </a>
 
           {/* Facebook */}
-          <a href="#" aria-label="Facebook" className="group w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-black/5" style={{ color: '#91897E' }}>
+          <a href="https://www.facebook.com/profile.php?id=61550304892633&locale=ar_AR" aria-label="Facebook" className="group w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-black/5" style={{ color: '#91897E' }}>
             <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24" className="transition-all duration-300 group-hover:text-[#B49A68] group-hover:-translate-y-0.5">
               <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073c0 6.02 4.388 11.04 10.125 11.927v-8.437H7.078v-3.49h3.047V9.41c0-3.026 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.98h-1.514c-1.491 0-1.956.93-1.956 1.886v2.258h3.328l-.532 3.49h-2.796V24C19.612 23.113 24 18.093 24 12.073Z" />
             </svg>
@@ -76,7 +81,7 @@ export default function Footer() {
           </a>
 
           {/* WhatsApp */}
-          <a href="https://wa.me/201000000000" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="group w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-black/5" style={{ color: '#91897E' }}>
+          <a href="https://wa.me/201105643418" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="group w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-black/5" style={{ color: '#91897E' }}>
             <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24" className="transition-all duration-300 group-hover:text-[#B49A68] group-hover:-translate-y-0.5">
               <path d="M12 0a12 12 0 00-10.35 17.9L0 24l6.3-1.65A12 12 0 1012 0zm0 2a10 10 0 11-5.62 18.33l-.36-.22-3.74.98 1-3.64-.24-.38A10 10 0 0112 2zm5.29 14.5c-.22.6-1.2 1.17-1.66 1.2-.43.04-.97.2-3.13-.64-2.63-1.02-4.3-3.7-4.43-3.88-.13-.17-1.06-1.4-1.06-2.66s.66-1.88.9-2.13c.22-.24.48-.3.64-.3h.46c.15 0 .35-.06.54.42.22.6.75 2.06.82 2.2.06.15.1.32.02.5-.08.17-.12.28-.24.43-.12.15-.25.34-.36.45-.12.12-.24.25-.1.49.14.24.62 1.03 1.33 1.66.91.81 1.68 1.06 1.92 1.18.24.12.38.1.52-.06.14-.16.6-.7.76-.94.16-.24.32-.2.54-.12.22.08 1.4.66 1.64.78.24.12.4.18.46.28.06.1.06.58-.16 1.18z"/>
             </svg>
@@ -89,18 +94,18 @@ export default function Footer() {
         {/* Contact & Statement */}
         <div className="flex flex-col items-center gap-4">
           <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-6 text-[13px]" style={{ fontFamily: 'Tajawal, sans-serif' }}>
-            <a href="https://wa.me/201000000000" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[#292A28] hover:text-[#B49A68] transition-colors duration-300">
+            <a href="https://wa.me/201105643418" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[#292A28] hover:text-[#B49A68] transition-colors duration-300">
               <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 0a12 12 0 00-10.35 17.9L0 24l6.3-1.65A12 12 0 1012 0zm0 2a10 10 0 11-5.62 18.33l-.36-.22-3.74.98 1-3.64-.24-.38A10 10 0 0112 2zm5.29 14.5c-.22.6-1.2 1.17-1.66 1.2-.43.04-.97.2-3.13-.64-2.63-1.02-4.3-3.7-4.43-3.88-.13-.17-1.06-1.4-1.06-2.66s.66-1.88.9-2.13c.22-.24.48-.3.64-.3h.46c.15 0 .35-.06.54.42.22.6.75 2.06.82 2.2.06.15.1.32.02.5-.08.17-.12.28-.24.43-.12.15-.25.34-.36.45-.12.12-.24.25-.1.49.14.24.62 1.03 1.33 1.66.91.81 1.68 1.06 1.92 1.18.24.12.38.1.52-.06.14-.16.6-.7.76-.94.16-.24.32-.2.54-.12.22.08 1.4.66 1.64.78.24.12.4.18.46.28.06.1.06.58-.16 1.18z"/>
               </svg>
-              واتساب: 100 000 0000
+              واتساب: 01105643418
             </a>
             <span className="hidden sm:block w-1 h-1 rounded-full bg-[#9B9388]/50"></span>
             <a href="mailto:info@jidaar.com" className="flex items-center gap-1.5 text-[#292A28] hover:text-[#B49A68] transition-colors duration-300">
               <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24">
                 <path d="M3 8l9 6 9-6M3 8v10a2 2 0 002 2h14a2 2 0 002-2V8M3 8l2-2h14l2 2" />
               </svg>
-              info@jidaar.com
+              ahmedanan1919@gmail.com
             </a>
           </div>
 
@@ -126,7 +131,7 @@ export default function Footer() {
               fontFamily: 'Tajawal, sans-serif',
             }}
           >
-            © {new Date().getFullYear()} JIDAAR — إطار. جميع الحقوق محفوظة
+            © {new Date().getFullYear()} JIDAAR — جدار. جميع الحقوق محفوظة
           </p>
           <p
             className="text-[9px] sm:text-[10px]"

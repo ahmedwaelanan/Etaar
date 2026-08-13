@@ -11,6 +11,7 @@ import { useCart } from '@/context/CartContext'
 import { supabase } from '@/lib/supabase'
 import { getGuestId } from '@/lib/manual-link-order'
 import InlineReviewList from '@/components/InlineReviewList'
+import ProductCard from '@/components/ProductCard'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -30,6 +31,9 @@ export default function ProductDetailClient({
   const [isSuccessModalOpen, setIsSuccessModalOpen] =
     useState(false)
 
+  const [isBuyNowModalOpen, setIsBuyNowModalOpen] =
+    useState(false)
+
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [address, setAddress] = useState('')
@@ -37,6 +41,9 @@ export default function ProductDetailClient({
     useState<string | null>(null)
 
   const [reviews, setReviews] = useState<Review[]>([])
+
+  const [relatedProducts, setRelatedProducts] = useState<Product[]>([])
+  const [relatedLoading, setRelatedLoading] = useState(true)
 
   const autoSlideRef =
     useRef<NodeJS.Timeout | null>(null)
@@ -200,6 +207,123 @@ export default function ProductDetailClient({
 
     fetchReviews()
   }, [product.id])
+
+  /* =====================================================
+     SMART RELATED PRODUCTS
+  ===================================================== */
+
+  useEffect(() => {
+    const fetchRelatedProducts = async () => {
+      setRelatedLoading(true)
+
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .neq('id', product.id)
+
+        if (error) {
+          console.error('Related products error:', error)
+          setRelatedProducts([])
+          return
+        }
+
+        if (!data || data.length === 0) {
+          setRelatedProducts([])
+          return
+        }
+
+        const currentProductPrice =
+          parseFloat(String(product.price)) || 0
+
+        const currentCategory =
+          String(product.category || '').trim().toLowerCase()
+
+        const currentText =
+          `${String(product.title || '')} ${String(product.description || '')}`.toLowerCase()
+
+        const stopWords = new Set([
+          'the', 'and', 'for', 'with', 'from', 'this', 'that',
+          'wall', 'art', 'painting', 'canvas', 'frame',
+          'تابلو', 'لوحة', 'لوحات', 'على', 'من', 'في', 'و', 'مع',
+        ])
+
+        const getKeywords = (text: string) =>
+          text
+            .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+            .split(/\s+/)
+            .map(word => word.trim())
+            .filter(word => word.length >= 3 && !stopWords.has(word))
+
+        const currentKeywords = Array.from(
+          new Set(getKeywords(currentText))
+        )
+
+        const scoredProducts = (data as Product[])
+          .map((item) => {
+            let score = 0
+
+            const itemCategory =
+              String(item.category || '').trim().toLowerCase()
+
+            const itemTitle =
+              String(item.title || '').toLowerCase()
+
+            const itemDescription =
+              String(item.description || '').toLowerCase()
+
+            const itemText = `${itemTitle} ${itemDescription}`
+            const itemPrice = parseFloat(String(item.price)) || 0
+
+            // Same category is the strongest signal.
+            if (currentCategory && itemCategory === currentCategory) {
+              score += 50
+            }
+
+            // Similar price range.
+            if (currentProductPrice > 0 && itemPrice > 0) {
+              const priceRatio =
+                Math.abs(currentProductPrice - itemPrice) / currentProductPrice
+
+              if (priceRatio <= 0.10) score += 25
+              else if (priceRatio <= 0.20) score += 18
+              else if (priceRatio <= 0.35) score += 10
+            }
+
+            // Shared title/description keywords.
+            let matchedKeywords = 0
+            currentKeywords.forEach((keyword) => {
+              if (itemText.includes(keyword)) {
+                matchedKeywords += 1
+              }
+            })
+            score += Math.min(matchedKeywords * 6, 30)
+
+            // Featured / available products get a small boost.
+            if ((item as any).featured === true) score += 8
+
+            const status = String((item as any).status || '').toLowerCase()
+            if (status !== 'sold' && status !== 'unavailable') {
+              score += 5
+            }
+
+            return { product: item, score }
+          })
+          .sort((a, b) => b.score - a.score)
+
+        setRelatedProducts(
+          scoredProducts.slice(0, 4).map(item => item.product)
+        )
+      } catch (error) {
+        console.error('Failed to load related products:', error)
+        setRelatedProducts([])
+      } finally {
+        setRelatedLoading(false)
+      }
+    }
+
+    fetchRelatedProducts()
+  }, [product.id, product.category, product.title, product.description, product.price])
 
   /* =====================================================
      DEFAULT SIZE
@@ -420,6 +544,47 @@ export default function ProductDetailClient({
   }
 
   /* =====================================================
+     BUY NOW
+  ===================================================== */
+
+  const openBuyNowModal = () => {
+    if (hasSizes && !selectedSize) {
+      toast.error('Please select a size')
+      return
+    }
+
+    setIsBuyNowModalOpen(true)
+    document.body.style.overflow = 'hidden'
+  }
+
+  const closeBuyNowModal = () => {
+    setIsBuyNowModalOpen(false)
+    document.body.style.overflow = 'unset'
+  }
+
+  const generateUUID = () => {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
+    return crypto.randomUUID()
+  }
+
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(
+    /[xy]/g,
+    (c) => {
+      const r = Math.random() * 16 | 0
+      const v =
+        c === 'x'
+          ? r
+          : (r & 0x3) | 0x8
+
+      return v.toString(16)
+    }
+  )
+}
+
+  /* =====================================================
      ORDER
   ===================================================== */
 
@@ -475,7 +640,7 @@ export default function ProductDetailClient({
           size: selectedSize,
 
           group_id:
-            crypto.randomUUID(),
+            generateUUID(),
 
           full_name:
             fullName.trim(),
@@ -497,6 +662,9 @@ export default function ProductDetailClient({
           `DB Error: ${error.message}`
         )
       } else {
+        setIsBuyNowModalOpen(false)
+        document.body.style.overflow = 'unset'
+
         setIsSuccessModalOpen(
           true
         )
@@ -1021,69 +1189,337 @@ export default function ProductDetailClient({
                   </span>
                 </div>
 
-                <h1
-                  className="
-                    text-3xl
-                    sm:text-4xl
-                    lg:text-[42px]
-                    font-bold
-                  "
-                  style={{
-                    color:
-                      '#292A28',
-
-                    fontFamily:
-                      'Amiri, serif',
-
-                    lineHeight: 1.25,
-                  }}
-                >
-                  {product.title}
-                </h1>
-
-                {/* PRICE */}
-
-                <div
-                  className="
-                    flex
-                    items-baseline
-                    gap-3
-                    mt-5
-                  "
-                >
-                  <p
-                    className="
-                      text-3xl
-                      font-bold
-                    "
-                    style={{
-                      color:
-                        '#A88C58',
-                    }}
-                  >
-                    {Math.round(
-                      currentPrice
-                    )}{' '}
-                    EGP
-                  </p>
-
-                  {hasSizes && (
-                    <span
-                      className="text-xs"
+                <div className="flex items-start gap-5">
+                  <div className="min-w-0 flex-1">
+                    <h1
+                      className="
+                        text-3xl
+                        sm:text-4xl
+                        lg:text-[42px]
+                        font-bold
+                      "
                       style={{
-                        color:
-                          '#958D83',
+                        color: '#292A28',
+                        fontFamily: 'Amiri, serif',
+                        lineHeight: 1.25,
                       }}
                     >
-                      Start from{' '}
-                      {Math.round(
-                        minPrice
-                      )}{' '}
-                      EGP
-                    </span>
-                  )}
+                      {product.title}
+                    </h1>
+
+                    {/* PRICE */}
+                    <div
+                      className="
+                        flex
+                        items-baseline
+                        gap-3
+                        mt-5
+                      "
+                    >
+                      <p
+                        className="
+                          text-3xl
+                          font-bold
+                        "
+                        style={{
+                          color: '#A88C58',
+                        }}
+                      >
+                        {Math.round(currentPrice)} EGP
+                      </p>
+                    </div>
+                    
+                  </div>
+
+                  {/* ACTIONS — RIGHT OF PRODUCT NAME / PRICE */}
+                  <div
+                    className="
+                      flex
+                      flex-col
+                      gap-2
+                      shrink-0
+                      w-[94px]
+                    "
+                    dir="ltr"
+                  >
+                    {/* ADD TO CART */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        addToCart(product)
+                        toast.success('Added to cart!')
+                      }}
+                      className="
+                        min-w-[86px]
+                        h-11
+                        sm:min-w-[94px]
+                        sm:h-12
+                        px-3
+                        flex
+                        items-center
+                        justify-center
+                        gap-2
+                        transition-all
+                        duration-300
+                        hover:-translate-y-0.5
+                        hover:scale-[1.03]
+                      "
+                      style={{
+                        background: '#292A28',
+                        color: '#F5F2ED',
+                        border: '1px solid #292A28',
+                        boxShadow: '0 10px 25px rgba(41,42,40,.12)',
+                      }}
+                      aria-label="Add to Cart"
+                      title="Add to Cart"
+                    >
+                
+                      <span className="text-[14px] font-semibold tracking-wide">
+                        Cart
+                      </span>
+                            <svg
+                        width="17"
+                        height="17"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 1.9-1.4L21 8H6" />
+                        <circle cx="10" cy="20" r="1" />
+                        <circle cx="18" cy="20" r="1" />
+                        <path d="M12 5v6M9 8h6" />
+                      </svg>
+                    </button>
+
+                    {/* BUY NOW */}
+                    <button
+                      type="button"
+                      onClick={openBuyNowModal}
+                      className="
+                        min-w-[86px]
+                        h-11
+                        sm:min-w-[94px]
+                        sm:h-12
+                        px-3
+                        flex
+                        items-center
+                        justify-center
+                        gap-2
+                        transition-all
+                        duration-300
+                        hover:-translate-y-0.5
+                        hover:scale-[1.03]
+                      "
+                      style={{
+                        background: '#B49A68',
+                        color: '#F5F2ED',
+                        border: '1px solid #B49A68',
+                        boxShadow: '0 10px 25px rgba(180,154,104,.18)',
+                      }}
+                      aria-label="Buy Now"
+                      title="Buy Now"
+                    >
+                  
+                      <span className="text-[14px] font-semibold tracking-wide">
+                        Buy
+                      </span>
+                          <svg
+                        width="17"
+                        height="17"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M6 7h12l-1 13H7L6 7Z" />
+                        <path d="M9 7a3 3 0 0 1 6 0" />
+                        <path d="M9 11h.01M15 11h.01" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
+              {/* SIZES — DIRECTLY UNDER PRICE */}
+
+{hasSizes && (
+  <div className="mt-5">
+    <div
+      className="
+        flex
+        items-center
+        justify-between
+        mb-2.5
+      "
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className="
+            text-[10px]
+            uppercase
+            tracking-[0.14em]
+            font-medium
+          "
+          style={{
+            color: '#8A837A',
+          }}
+        >
+          Size
+        </span>
+
+        <span
+          className="text-[10px]"
+          style={{
+            color: '#B0A79D',
+          }}
+        >
+          — المقاس
+        </span>
+      </div>
+
+      {selectedSize && (
+        <span
+          className="
+            text-[10px]
+            font-medium
+          "
+          style={{
+            color: '#A28A61',
+          }}
+        >
+          {selectedSize}
+        </span>
+      )}
+    </div>
+
+    <div
+      className="
+        flex
+        flex-wrap
+        gap-2
+      "
+    >
+      {parsedSizes.map(
+        (
+          size: any,
+          i: number
+        ) => {
+          const sizeName =
+            getSizeName(size)
+
+          const sizePrice =
+            getSizePrice(size)
+
+          const isSelected =
+            selectedSize === sizeName
+
+          return (
+            <button
+              type="button"
+              key={
+                sizeName || i
+              }
+              onClick={() =>
+                setSelectedSize(
+                  sizeName
+                )
+              }
+              className="
+                group
+                relative
+                min-w-[92px]
+                sm:min-w-[100px]
+                px-3
+                py-2.5
+                transition-all
+                duration-300
+                text-left
+              "
+              style={{
+                borderRadius: 8,
+
+                border: isSelected
+                  ? '1px solid #B49A68'
+                  : '1px solid rgba(41,42,40,.10)',
+
+                background: isSelected
+                  ? 'rgba(180,154,104,.09)'
+                  : 'rgba(255,255,255,.32)',
+
+                boxShadow: isSelected
+                  ? '0 6px 18px rgba(180,154,104,.10)'
+                  : '0 3px 12px rgba(41,42,40,.025)',
+
+                transform: isSelected
+                  ? 'translateY(-1px)'
+                  : 'none',
+              }}
+            >
+              {/* SELECTED INDICATOR */}
+
+              {isSelected && (
+                <span
+                  className="
+                    absolute
+                    top-2
+                    right-2
+                    w-1.5
+                    h-1.5
+                    rounded-full
+                  "
+                  style={{
+                    background:
+                      '#B49A68',
+                  }}
+                />
+              )}
+
+              <span
+                className="
+                  block
+                  text-[13px]
+                  font-medium
+                  leading-tight
+                  pr-3
+                "
+                style={{
+                  color: isSelected
+                    ? '#8E7650'
+                    : '#5F5A54',
+                }}
+              >
+                {sizeName}
+              </span>
+
+              <span
+                className="
+                  block
+                  text-[10px]
+                  mt-1
+                  leading-none
+                "
+                style={{
+                  color: isSelected
+                    ? '#A28A61'
+                    : '#9A9288',
+                }}
+              >
+                {Math.round(
+                  sizePrice
+                )}{' '}
+                EGP
+              </span>
+            </button>
+          )
+        }
+      )}
+    </div>
+  </div>
+)}
 
               {/* DESCRIPTION */}
 
@@ -1117,751 +1553,81 @@ export default function ProductDetailClient({
                   }
                 />
               </div>
+            </div>
+          </div>
 
-              {/* =================================================
-                  SIZES
-              ================================================= */}
+          {/* =================================================
+              SMART RELATED PRODUCTS
+          ================================================= */}
 
-              {hasSizes && (
-                <div>
-                  <label
-                    className="
-                      text-[11px]
-                      mb-3
-                      block
-                      uppercase
-                      tracking-[0.12em]
-                    "
-                    style={{
-                      color:
-                        '#8A837A',
-                    }}
+          {!relatedLoading && relatedProducts.length > 0 && (
+            <section className="mt-20 sm:mt-24" dir="ltr">
+              <div className="mb-8">
+                <div className="flex items-center gap-3 mb-3">
+                  <span
+                    className="w-8 h-px"
+                    style={{ background: '#B49A68' }}
+                  />
+                  <span
+                    className="text-[10px] uppercase tracking-[0.22em]"
+                    style={{ color: '#A28A61' }}
                   >
-                    Size{' '}
-                    <span
-                      className="
-                        normal-case
-                        tracking-normal
-                      "
+                    You May Also Like
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+                  <div>
+                    <h2
+                      className="text-2xl sm:text-3xl font-bold"
                       style={{
-                        color:
-                          '#B0A79D',
+                        color: '#292A28',
+                        fontFamily: 'Amiri, serif',
                       }}
                     >
-                      — المقاس
-                    </span>
-                  </label>
-
-                  <div className="flex flex-wrap gap-2.5">
-                    {parsedSizes.map(
-                      (
-                        size: any,
-                        i: number
-                      ) => {
-                        const sizeName =
-                          getSizeName(
-                            size
-                          )
-
-                        const sizePrice =
-                          getSizePrice(
-                            size
-                          )
-
-                        const isSelected =
-                          selectedSize ===
-                          sizeName
-
-                        return (
-                          <button
-                            type="button"
-                            key={
-                              sizeName ||
-                              i
-                            }
-                            onClick={() =>
-                              setSelectedSize(
-                                sizeName
-                              )
-                            }
-                            className="
-                              px-5
-                              py-2.5
-                              transition-all
-                              duration-300
-                            "
-                            style={{
-                              borderRadius:
-                                10,
-
-                              border:
-                                isSelected
-                                  ? '1px solid #B49A68'
-                                  : '1px solid rgba(41,42,40,.11)',
-
-                              background:
-                                isSelected
-                                  ? '#EEEAE4'
-                                  : 'rgba(255,255,255,.28)',
-
-                              color:
-                                isSelected
-                                  ? '#8E7650'
-                                  : '#756E65',
-
-                              boxShadow:
-                                isSelected
-                                  ? '0 8px 22px rgba(180,154,104,.12)'
-                                  : '0 4px 14px rgba(41,42,40,.025)',
-                            }}
-                          >
-                            <span className="block text-sm font-medium">
-                              {
-                                sizeName
-                              }
-                            </span>
-
-                            <span
-                              className="
-                                block
-                                text-[11px]
-                                mt-0.5
-                              "
-                              style={{
-                                color:
-                                  isSelected
-                                    ? '#A28A61'
-                                    : '#9A9288',
-                              }}
-                            >
-                              {Math.round(
-                                sizePrice
-                              )}{' '}
-                              EGP
-                            </span>
-                          </button>
-                        )
-                      }
-                    )}
+                      Curated For You
+                    </h2>
+                    <p
+                      className="text-xs sm:text-sm mt-2"
+                      style={{ color: '#817A71' }}
+                    >
+                      Pieces selected to complement the artwork you are viewing.
+                    </p>
                   </div>
+
+                  <Link
+                    href="/shop"
+                    className="text-xs transition-all duration-300 hover:translate-x-1"
+                    style={{ color: '#A28A61' }}
+                  >
+                    View All →
+                  </Link>
                 </div>
-              )}
-
-              {/* =================================================
-                  ADD TO CART
-              ================================================= */}
-
-              <button
-                type="button"
-                onClick={() => {
-                  addToCart(
-                    product
-                  )
-
-                  toast.success(
-                    'Added to cart!'
-                  )
-                }}
-                className="
-                  inline-flex
-                  items-center
-                  justify-center
-                  gap-2.5
-                  px-7
-                  py-3.5
-                  text-sm
-                  font-semibold
-                  transition-all
-                  duration-300
-                  hover:-translate-y-0.5
-                "
-                style={{
-                  background:
-                    '#292A28',
-
-                  color:
-                    '#F5F2ED',
-
-                  border:
-                    '1px solid #292A28',
-
-                  boxShadow:
-                    '0 10px 25px rgba(41,42,40,.12)',
-                }}
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                >
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-
-                Add to Cart
-              </button>
-
-              {/* =================================================
-                  SHIPPING FORM
-
-                  Layout remains LTR,
-                  Arabic labels remain unchanged.
-              ================================================= */}
+              </div>
 
               <div
                 className="
-                  p-6
-                  sm:p-7
-                  space-y-6
+                  grid
+                  grid-cols-2
+                  md:grid-cols-3
+                  lg:grid-cols-4
+                  gap-4
+                  sm:gap-6
                 "
-                style={{
-                  background:
-                    'rgba(255,255,255,.30)',
-
-                  border:
-                    '1px solid rgba(41,42,40,.08)',
-
-                  boxShadow:
-                    '0 18px 45px rgba(41,42,40,.045)',
-
-                  backdropFilter:
-                    'blur(12px)',
-                }}
               >
-                {/* FORM HEADER */}
-
-                <div className="flex items-center gap-3">
-                  <div
-                    className="
-                      w-9
-                      h-9
-                      flex
-                      items-center
-                      justify-center
-                      rounded-full
-                    "
-                    style={{
-                      background:
-                        'rgba(180,154,104,.10)',
-
-                      color:
-                        '#A88C58',
-                    }}
-                  >
-                    <svg
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.4"
-                    >
-                      <path d="M16 3h5v5M21 8l-7 7M8 21H3v-5M3 16l7-7" />
-                    </svg>
-                  </div>
-
-                  <div>
-                    <h3
-                      className="
-                        font-semibold
-                        text-sm
-                      "
-                      style={{
-                        color:
-                          '#292A28',
-                      }}
-                    >
-                      Shipping Details
-                    </h3>
-
-                    <span
-                      className="text-[11px]"
-                      style={{
-                        color:
-                          '#9A9288',
-                      }}
-                    >
-                      بيانات الشحن
-                    </span>
-                  </div>
-                </div>
-
-                {/* INPUTS */}
-
-                <div
-                  className="
-                    grid
-                    grid-cols-1
-                    sm:grid-cols-2
-                    gap-4
-                  "
-                >
-                  {/* FULL NAME */}
-
-                  <div>
-                    <label
-                      className="
-                        text-[10px]
-                        mb-1.5
-                        block
-                        uppercase
-                        tracking-[0.12em]
-                      "
-                      style={{
-                        color:
-                          '#8B837A',
-                      }}
-                    >
-                      Full Name
-
-                      <span
-                        className="
-                          normal-case
-                          tracking-normal
-                        "
-                        style={{
-                          color:
-                            '#AAA198',
-                        }}
-                      >
-                        {' '}
-                        — الاسم بالكامل
-                      </span>
-                    </label>
-
-                    <input
-                      type="text"
-                      value={
-                        fullName
-                      }
-                      onChange={(
-                        e
-                      ) =>
-                        setFullName(
-                          e.target
-                            .value
-                        )
-                      }
-                      className="
-                        w-full
-                        h-11
-                        px-4
-                        outline-none
-                        transition-all
-                        duration-300
-                      "
-                      style={{
-                        background:
-                          'rgba(245,242,237,.72)',
-
-                        border:
-                          '1px solid rgba(41,42,40,.10)',
-
-                        color:
-                          '#292A28',
-                      }}
-                      placeholder="Enter your full name"
+                {relatedProducts.map(
+                  (relatedProduct, index) => (
+                    <ProductCard
+                      key={relatedProduct.id}
+                      product={relatedProduct}
+                      index={index}
+                      viewMode="grid"
                     />
-                  </div>
-
-                  {/* PHONE */}
-
-                  <div>
-                    <label
-                      className="
-                        text-[10px]
-                        mb-1.5
-                        block
-                        uppercase
-                        tracking-[0.12em]
-                      "
-                      style={{
-                        color:
-                          '#8B837A',
-                      }}
-                    >
-                      Phone Number
-
-                      <span
-                        className="
-                          normal-case
-                          tracking-normal
-                        "
-                        style={{
-                          color:
-                            '#AAA198',
-                        }}
-                      >
-                        {' '}
-                        — رقم الهاتف
-                      </span>
-                    </label>
-
-                    <input
-                      type="tel"
-                      value={
-                        phone
-                      }
-                      onChange={(
-                        e
-                      ) =>
-                        setPhone(
-                          e.target
-                            .value
-                        )
-                      }
-                      className="
-                        w-full
-                        h-11
-                        px-4
-                        outline-none
-                        transition-all
-                        duration-300
-                      "
-                      style={{
-                        background:
-                          'rgba(245,242,237,.72)',
-
-                        border:
-                          '1px solid rgba(41,42,40,.10)',
-
-                        color:
-                          '#292A28',
-                      }}
-                      placeholder="01xxxxxxxxx"
-                    />
-                  </div>
-
-                  {/* ADDRESS */}
-
-                  <div className="sm:col-span-2">
-                    <label
-                      className="
-                        text-[10px]
-                        mb-1.5
-                        block
-                        uppercase
-                        tracking-[0.12em]
-                      "
-                      style={{
-                        color:
-                          '#8B837A',
-                      }}
-                    >
-                      Shipping Address
-
-                      <span
-                        className="
-                          normal-case
-                          tracking-normal
-                        "
-                        style={{
-                          color:
-                            '#AAA198',
-                        }}
-                      >
-                        {' '}
-                        — عنوان الشحن
-                      </span>
-                    </label>
-
-                    <textarea
-                      value={
-                        address
-                      }
-                      onChange={(
-                        e
-                      ) =>
-                        setAddress(
-                          e.target
-                            .value
-                        )
-                      }
-                      className="
-                        w-full
-                        min-h-[84px]
-                        px-4
-                        py-3
-                        outline-none
-                        resize-none
-                        transition-all
-                        duration-300
-                      "
-                      style={{
-                        background:
-                          'rgba(245,242,237,.72)',
-
-                        border:
-                          '1px solid rgba(41,42,40,.10)',
-
-                        color:
-                          '#292A28',
-                      }}
-                      placeholder="City, District, Street, Building No."
-                    />
-                  </div>
-                </div>
-
-                {/* DIVIDER */}
-
-                <div
-                  className="h-px"
-                  style={{
-                    background:
-                      'rgba(41,42,40,.08)',
-                  }}
-                />
-
-                {/* QUANTITY / TOTAL */}
-
-                <div
-                  className="
-                    flex
-                    flex-col
-                    sm:flex-row
-                    items-start
-                    sm:items-center
-                    justify-between
-                    gap-5
-                  "
-                >
-                  {/* QUANTITY */}
-
-                  <div>
-                    <label
-                      className="
-                        text-[10px]
-                        mb-2
-                        block
-                        uppercase
-                        tracking-[0.12em]
-                      "
-                      style={{
-                        color:
-                          '#8B837A',
-                      }}
-                    >
-                      Quantity
-                    </label>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setQuantity(
-                            Math.max(
-                              1,
-                              quantity -
-                                1
-                            )
-                          )
-                        }
-                        disabled={
-                          quantity <=
-                          1
-                        }
-                        className="
-                          w-10
-                          h-10
-                          flex
-                          items-center
-                          justify-center
-                          transition-all
-                          duration-300
-                        "
-                        style={{
-                          background:
-                            'rgba(255,255,255,.34)',
-
-                          border:
-                            '1px solid rgba(41,42,40,.10)',
-
-                          color:
-                            '#686158',
-
-                          opacity:
-                            quantity <=
-                            1
-                              ? 0.4
-                              : 1,
-                        }}
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                        >
-                          <path d="M5 12h14" />
-                        </svg>
-                      </button>
-
-                      <span
-                        className="
-                          text-base
-                          font-semibold
-                          w-10
-                          text-center
-                        "
-                        style={{
-                          color:
-                            '#292A28',
-                        }}
-                      >
-                        {
-                          quantity
-                        }
-                      </span>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setQuantity(
-                            quantity +
-                              1
-                          )
-                        }
-                        className="
-                          w-10
-                          h-10
-                          flex
-                          items-center
-                          justify-center
-                          transition-all
-                          duration-300
-                        "
-                        style={{
-                          background:
-                            'rgba(255,255,255,.34)',
-
-                          border:
-                            '1px solid rgba(41,42,40,.10)',
-
-                          color:
-                            '#686158',
-                        }}
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                        >
-                          <path d="M12 5v14M5 12h14" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* TOTAL */}
-
-                  <div
-                    className="
-                      w-full
-                      sm:w-auto
-                      text-left
-                      sm:text-right
-                    "
-                  >
-                    <label
-                      className="
-                        text-[10px]
-                        mb-1.5
-                        block
-                        uppercase
-                        tracking-[0.12em]
-                      "
-                      style={{
-                        color:
-                          '#8B837A',
-                      }}
-                    >
-                      Total
-                    </label>
-
-                    <span
-                      className="
-                        font-bold
-                        text-2xl
-                      "
-                      style={{
-                        color:
-                          '#A88C58',
-                      }}
-                    >
-                      {Math.round(
-                        currentPrice *
-                          quantity
-                      )}{' '}
-                      EGP
-                    </span>
-                  </div>
-                </div>
-
-                {/* CONFIRM */}
-
-                <button
-                  type="button"
-                  onClick={
-                    handleOrder
-                  }
-                  disabled={
-                    loading
-                  }
-                  className="
-                    w-full
-                    py-4
-                    text-sm
-                    font-semibold
-                    transition-all
-                    duration-300
-                    hover:-translate-y-0.5
-                    disabled:opacity-40
-                    disabled:cursor-not-allowed
-                  "
-                  style={{
-                    background:
-                      '#292A28',
-
-                    color:
-                      '#F5F2ED',
-
-                    boxShadow:
-                      '0 12px 28px rgba(41,42,40,.12)',
-                  }}
-                >
-                  {loading ? (
-                    <span
-                      className="
-                        inline-block
-                        w-5
-                        h-5
-                        border-2
-                        rounded-full
-                        animate-spin
-                      "
-                      style={{
-                        borderColor:
-                          'rgba(245,242,237,.25)',
-
-                        borderTopColor:
-                          '#B49A68',
-                      }}
-                    />
-                  ) : (
-                    'Confirm Order'
-                  )}
-                </button>
+                  )
+                )}
               </div>
-            </div>
-          </div>
+            </section>
+          )}
         </div>
       </main>
 
@@ -2208,6 +1974,503 @@ export default function ProductDetailClient({
       )}
 
       {/* =====================================================
+          BUY NOW MODAL
+      ===================================================== */}
+
+      {isBuyNowModalOpen && (
+        <div
+          className="
+            fixed
+            inset-0
+            z-[115]
+            flex
+            items-center
+            justify-center
+            p-4
+          "
+        >
+          {/* BACKDROP */}
+          <div
+            className="
+              absolute
+              inset-0
+              backdrop-blur-md
+            "
+            style={{
+              background: 'rgba(41,42,40,.58)',
+            }}
+            onClick={closeBuyNowModal}
+          />
+
+          {/* MODAL */}
+          <div
+            className="
+              relative
+              w-full
+              max-w-2xl
+              max-h-[92vh]
+              overflow-y-auto
+              p-6
+              sm:p-8
+              animate-fade-in
+            "
+            style={{
+              background: '#F5F2ED',
+              border: '1px solid rgba(41,42,40,.10)',
+              boxShadow: '0 30px 90px rgba(41,42,40,.25)',
+            }}
+            dir="ltr"
+          >
+            {/* CLOSE */}
+            <button
+              type="button"
+              onClick={closeBuyNowModal}
+              className="
+                absolute
+                top-4
+                right-4
+                w-9
+                h-9
+                flex
+                items-center
+                justify-center
+                transition-all
+                duration-300
+                hover:scale-105
+              "
+              style={{
+                background: 'rgba(41,42,40,.06)',
+                border: '1px solid rgba(41,42,40,.10)',
+                color: '#686158',
+              }}
+              aria-label="Close"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* HEADER */}
+            <div className="pr-12 mb-7">
+              <div
+                className="text-[10px] uppercase tracking-[0.18em] mb-2"
+                style={{ color: '#A28A61' }}
+              >
+                Quick Checkout
+              </div>
+
+              <h2
+                className="text-2xl sm:text-3xl font-bold"
+                style={{
+                  color: '#292A28',
+                  fontFamily: 'Amiri, serif',
+                }}
+              >
+                {product.title}
+              </h2>
+
+              <div className="flex items-center gap-3 mt-2">
+                <span
+                  className="text-xl font-bold"
+                  style={{ color: '#A88C58' }}
+                >
+                  {Math.round(currentPrice)} EGP
+                </span>
+
+                {selectedSize && (
+                  <span
+                    className="text-xs px-3 py-1"
+                    style={{
+                      color: '#756E65',
+                      background: '#EEEAE4',
+                      border: '1px solid rgba(41,42,40,.08)',
+                    }}
+                  >
+                    {selectedSize}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* SHIPPING */}
+            <div
+              className="space-y-6"
+              style={{
+                background: 'rgba(255,255,255,.30)',
+                border: '1px solid rgba(41,42,40,.08)',
+                boxShadow: '0 18px 45px rgba(41,42,40,.045)',
+                backdropFilter: 'blur(12px)',
+                padding: '24px',
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="
+                    w-9
+                    h-9
+                    flex
+                    items-center
+                    justify-center
+                    rounded-full
+                  "
+                  style={{
+                    background: 'rgba(180,154,104,.10)',
+                    color: '#A88C58',
+                  }}
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                  >
+                    <path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z" />
+                    <circle cx="7" cy="19" r="1.5" />
+                    <circle cx="18" cy="19" r="1.5" />
+                  </svg>
+                </div>
+
+                <div>
+                  <h3
+                    className="font-semibold text-sm"
+                    style={{ color: '#292A28' }}
+                  >
+                    Shipping Details
+                  </h3>
+                  <span
+                    className="text-[11px]"
+                    style={{ color: '#9A9288' }}
+                  >
+                    بيانات الشحن
+                  </span>
+                </div>
+              </div>
+
+              <div
+                className="
+                  grid
+                  grid-cols-1
+                  sm:grid-cols-2
+                  gap-4
+                "
+              >
+                {/* FULL NAME */}
+                <div>
+                  <label
+                    className="
+                      text-[10px]
+                      mb-1.5
+                      block
+                      uppercase
+                      tracking-[0.12em]
+                    "
+                    style={{ color: '#8B837A' }}
+                  >
+                    Full Name
+                    <span
+                      className="normal-case tracking-normal"
+                      style={{ color: '#AAA198' }}
+                    >
+                      {' '}— الاسم بالكامل
+                    </span>
+                  </label>
+
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="
+                      w-full
+                      h-11
+                      px-4
+                      outline-none
+                      transition-all
+                      duration-300
+                    "
+                    style={{
+                      background: 'rgba(245,242,237,.72)',
+                      border: '1px solid rgba(41,42,40,.10)',
+                      color: '#292A28',
+                    }}
+                    placeholder="Enter your full name"
+                  />
+                </div>
+
+                {/* PHONE */}
+                <div>
+                  <label
+                    className="
+                      text-[10px]
+                      mb-1.5
+                      block
+                      uppercase
+                      tracking-[0.12em]
+                    "
+                    style={{ color: '#8B837A' }}
+                  >
+                    Phone Number
+                    <span
+                      className="normal-case tracking-normal"
+                      style={{ color: '#AAA198' }}
+                    >
+                      {' '}— رقم الهاتف
+                    </span>
+                  </label>
+
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="
+                      w-full
+                      h-11
+                      px-4
+                      outline-none
+                      transition-all
+                      duration-300
+                    "
+                    style={{
+                      background: 'rgba(245,242,237,.72)',
+                      border: '1px solid rgba(41,42,40,.10)',
+                      color: '#292A28',
+                    }}
+                    placeholder="01xxxxxxxxx"
+                  />
+                </div>
+
+                {/* ADDRESS */}
+                <div className="sm:col-span-2">
+                  <label
+                    className="
+                      text-[10px]
+                      mb-1.5
+                      block
+                      uppercase
+                      tracking-[0.12em]
+                    "
+                    style={{ color: '#8B837A' }}
+                  >
+                    Shipping Address
+                    <span
+                      className="normal-case tracking-normal"
+                      style={{ color: '#AAA198' }}
+                    >
+                      {' '}— عنوان الشحن
+                    </span>
+                  </label>
+
+                  <textarea
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="
+                      w-full
+                      min-h-[84px]
+                      px-4
+                      py-3
+                      outline-none
+                      resize-none
+                      transition-all
+                      duration-300
+                    "
+                    style={{
+                      background: 'rgba(245,242,237,.72)',
+                      border: '1px solid rgba(41,42,40,.10)',
+                      color: '#292A28',
+                    }}
+                    placeholder="City, District, Street, Building No."
+                  />
+                </div>
+              </div>
+
+              <div
+                className="h-px"
+                style={{ background: 'rgba(41,42,40,.08)' }}
+              />
+
+              {/* QUANTITY / TOTAL */}
+              <div
+                className="
+                  flex
+                  flex-col
+                  sm:flex-row
+                  items-start
+                  sm:items-center
+                  justify-between
+                  gap-5
+                "
+              >
+                <div>
+                  <label
+                    className="
+                      text-[10px]
+                      mb-2
+                      block
+                      uppercase
+                      tracking-[0.12em]
+                    "
+                    style={{ color: '#8B837A' }}
+                  >
+                    Quantity
+                  </label>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                      disabled={quantity <= 1}
+                      className="
+                        w-10
+                        h-10
+                        flex
+                        items-center
+                        justify-center
+                        transition-all
+                        duration-300
+                      "
+                      style={{
+                        background: 'rgba(255,255,255,.34)',
+                        border: '1px solid rgba(41,42,40,.10)',
+                        color: '#686158',
+                        opacity: quantity <= 1 ? 0.4 : 1,
+                      }}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                      >
+                        <path d="M5 12h14" />
+                      </svg>
+                    </button>
+
+                    <span
+                      className="text-base font-semibold w-10 text-center"
+                      style={{ color: '#292A28' }}
+                    >
+                      {quantity}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setQuantity(quantity + 1)}
+                      className="
+                        w-10
+                        h-10
+                        flex
+                        items-center
+                        justify-center
+                        transition-all
+                        duration-300
+                      "
+                      style={{
+                        background: 'rgba(255,255,255,.34)',
+                        border: '1px solid rgba(41,42,40,.10)',
+                        color: '#686158',
+                      }}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                      >
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  className="
+                    w-full
+                    sm:w-auto
+                    text-left
+                    sm:text-right
+                  "
+                >
+                  <label
+                    className="
+                      text-[10px]
+                      mb-1.5
+                      block
+                      uppercase
+                      tracking-[0.12em]
+                    "
+                    style={{ color: '#8B837A' }}
+                  >
+                    Total
+                  </label>
+
+                  <span
+                    className="font-bold text-2xl"
+                    style={{ color: '#A88C58' }}
+                  >
+                    {Math.round(currentPrice * quantity)} EGP
+                  </span>
+                </div>
+              </div>
+
+              {/* CONFIRM */}
+              <button
+                type="button"
+                onClick={handleOrder}
+                disabled={loading}
+                className="
+                  w-full
+                  py-4
+                  text-sm
+                  font-semibold
+                  transition-all
+                  duration-300
+                  hover:-translate-y-0.5
+                  disabled:opacity-40
+                  disabled:cursor-not-allowed
+                "
+                style={{
+                  background: '#292A28',
+                  color: '#F5F2ED',
+                  boxShadow: '0 12px 28px rgba(41,42,40,.12)',
+                }}
+              >
+                {loading ? (
+                  <span
+                    className="
+                      inline-block
+                      w-5
+                      h-5
+                      border-2
+                      rounded-full
+                      animate-spin
+                    "
+                    style={{
+                      borderColor: 'rgba(245,242,237,.25)',
+                      borderTopColor: '#B49A68',
+                    }}
+                  />
+                ) : (
+                  'Confirm Order'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
           SUCCESS MODAL
       ===================================================== */}
 
@@ -2235,11 +2498,10 @@ export default function ProductDetailClient({
               background:
                 'rgba(41,42,40,.48)',
             }}
-            onClick={() =>
-              setIsSuccessModalOpen(
-                false
-              )
-            }
+            onClick={() => {
+              setIsSuccessModalOpen(false)
+              document.body.style.overflow = 'unset'
+            }}
           />
 
           {/* MODAL */}
@@ -2343,9 +2605,8 @@ export default function ProductDetailClient({
                   <button
                     type="button"
                     onClick={() => {
-                      setIsSuccessModalOpen(
-                        false
-                      )
+                      setIsSuccessModalOpen(false)
+                      document.body.style.overflow = 'unset'
 
                       router.push(
                         '/profile'
@@ -2389,9 +2650,8 @@ export default function ProductDetailClient({
                   <button
                     type="button"
                     onClick={() => {
-                      setIsSuccessModalOpen(
-                        false
-                      )
+                      setIsSuccessModalOpen(false)
+                      document.body.style.overflow = 'unset'
 
                       router.push(
                         '/shop'
@@ -2444,9 +2704,8 @@ export default function ProductDetailClient({
                   <button
                     type="button"
                     onClick={() => {
-                      setIsSuccessModalOpen(
-                        false
-                      )
+                      setIsSuccessModalOpen(false)
+                      document.body.style.overflow = 'unset'
 
                       router.push(
                         '/auth/login'
