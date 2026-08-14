@@ -56,15 +56,23 @@ export default function AdminProductsPage() {
   const dragPointerYRef = useRef<number | null>(null)
   const dragScrollFrameRef = useRef<number | null>(null)
 
-  // محرر قص الصور
+  // محرر قص الصور — قص حر + نسب جاهزة + تحريك/تكبير سلس
   const [cropIndex, setCropIndex] = useState<number | null>(null)
   const [cropZoom, setCropZoom] = useState(1)
   const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 })
   const [cropRatio, setCropRatio] = useState<'free' | '1:1' | '4:5' | '3:4'>('4:5')
   const [cropImageSize, setCropImageSize] = useState({ width: 0, height: 0 })
-  const cropDragRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 })
-  const [isCropDragging, setIsCropDragging] = useState(false)
-
+  const [cropViewport, setCropViewport] = useState({ width: 0, height: 0 })
+  const [cropBox, setCropBox] = useState({ x: 0, y: 0, width: 0, height: 0 })
+  const [cropInteraction, setCropInteraction] = useState<'image' | 'box' | 'resize' | null>(null)
+  const cropDragRef = useRef({
+    startX: 0,
+    startY: 0,
+    startOffset: { x: 0, y: 0 },
+    startBox: { x: 0, y: 0, width: 0, height: 0 },
+    handle: '',
+  })
+  const cropViewportRef = useRef<HTMLDivElement | null>(null)
   /*
   ======================================================
   HELPERS
@@ -241,6 +249,9 @@ export default function AdminProductsPage() {
     setCropIndex(null)
     setCropZoom(1)
     setCropOffset({ x: 0, y: 0 })
+    setCropBox({ x: 0, y: 0, width: 0, height: 0 })
+    setCropViewport({ width: 0, height: 0 })
+    setCropInteraction(null)
 
     if (fileRef.current) {
       fileRef.current.value = ''
@@ -483,9 +494,106 @@ export default function AdminProductsPage() {
     if (cropRatio === '1:1') return 1
     if (cropRatio === '4:5') return 4 / 5
     if (cropRatio === '3:4') return 3 / 4
-    return cropImageSize.width && cropImageSize.height
-      ? cropImageSize.width / cropImageSize.height
+    return cropBox.width > 0 && cropBox.height > 0
+      ? cropBox.width / cropBox.height
       : 1
+  }
+
+  const getCropImageMetrics = () => {
+    const vw = cropViewport.width
+    const vh = cropViewport.height
+    if (!vw || !vh || !cropImageSize.width || !cropImageSize.height) return null
+
+    const baseScale = Math.min(
+      vw / cropImageSize.width,
+      vh / cropImageSize.height
+    )
+    const scale = baseScale * cropZoom
+    const width = cropImageSize.width * scale
+    const height = cropImageSize.height * scale
+    const left = (vw - width) / 2 + cropOffset.x
+    const top = (vh - height) / 2 + cropOffset.y
+
+    return { scale, width, height, left, top }
+  }
+
+  const clampCropBox = (box: typeof cropBox) => {
+    const vw = cropViewport.width
+    const vh = cropViewport.height
+    if (!vw || !vh) return box
+
+    const width = Math.min(Math.max(box.width, 80), vw)
+    const height = Math.min(Math.max(box.height, 80), vh)
+    const x = Math.min(Math.max(box.x, 0), Math.max(0, vw - width))
+    const y = Math.min(Math.max(box.y, 0), Math.max(0, vh - height))
+
+    return { x, y, width, height }
+  }
+
+  const centerCropBox = (ratio: number, resetSize = false) => {
+    const vw = cropViewport.width
+    const vh = cropViewport.height
+    if (!vw || !vh) return
+
+    let width = cropBox.width
+    let height = cropBox.height
+
+    if (resetSize || !width || !height) {
+      const maxWidth = vw * 0.82
+      const maxHeight = vh * 0.82
+      width = maxWidth
+      height = width / ratio
+
+      if (height > maxHeight) {
+        height = maxHeight
+        width = height * ratio
+      }
+    } else if (cropRatio !== 'free') {
+      const maxWidth = vw * 0.9
+      const maxHeight = vh * 0.9
+      width = Math.min(width, maxWidth)
+      height = width / ratio
+      if (height > maxHeight) {
+        height = maxHeight
+        width = height * ratio
+      }
+    }
+
+    setCropBox({
+      x: (vw - width) / 2,
+      y: (vh - height) / 2,
+      width,
+      height,
+    })
+  }
+
+  const clampImageOffset = (offset: { x: number; y: number }, zoom = cropZoom) => {
+    const vw = cropViewport.width
+    const vh = cropViewport.height
+    if (!vw || !vh || !cropImageSize.width || !cropImageSize.height) return offset
+
+    const baseScale = Math.min(
+      vw / cropImageSize.width,
+      vh / cropImageSize.height
+    )
+    const width = cropImageSize.width * baseScale * zoom
+    const height = cropImageSize.height * baseScale * zoom
+
+    // نضمن أن الصورة تظل قادرة على تغطية منطقة القص بالكامل.
+    const cropRight = cropBox.x + cropBox.width
+    const cropBottom = cropBox.y + cropBox.height
+    const baseLeft = (vw - width) / 2
+    const baseTop = (vh - height) / 2
+
+    const minX = cropRight - width - baseLeft
+    const maxX = cropBox.x - baseLeft
+    const minY = cropBottom - height - baseTop
+    const maxY = cropBox.y - baseTop
+
+    return {
+      x: width >= cropBox.width ? Math.min(Math.max(offset.x, minX), maxX) : 0,
+      y: height >= cropBox.height ? Math.min(Math.max(offset.y, minY), maxY) : 0,
+    }
   }
 
   const openCrop = (index: number) => {
@@ -493,39 +601,228 @@ export default function AdminProductsPage() {
     setCropZoom(1)
     setCropOffset({ x: 0, y: 0 })
     setCropImageSize({ width: 0, height: 0 })
+    setCropViewport({ width: 0, height: 0 })
+    setCropBox({ x: 0, y: 0, width: 0, height: 0 })
+    setCropInteraction(null)
     document.body.style.overflow = 'hidden'
   }
 
   const closeCrop = () => {
     setCropIndex(null)
-    setIsCropDragging(false)
+    setCropInteraction(null)
     document.body.style.overflow = 'unset'
   }
 
-  const handleCropPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleCropImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const image = e.currentTarget
+    const imageWidth = image.naturalWidth
+    const imageHeight = image.naturalHeight
+    setCropImageSize({ width: imageWidth, height: imageHeight })
+
+    requestAnimationFrame(() => {
+      const viewport = cropViewportRef.current
+      if (!viewport) return
+
+      const rect = viewport.getBoundingClientRect()
+      const width = rect.width
+      const height = rect.height
+      setCropViewport({ width, height })
+
+      // بداية ذكية: إطار قص مناسب للصورة ومتمركز بدون أن يخرج عن مساحة العرض.
+      const ratio = cropRatio === 'free'
+        ? 4 / 5
+        : cropRatio === '1:1'
+          ? 1
+          : cropRatio === '4:5'
+            ? 4 / 5
+            : 3 / 4
+
+      const maxWidth = width * 0.82
+      const maxHeight = height * 0.82
+      let boxWidth = maxWidth
+      let boxHeight = boxWidth / ratio
+
+      if (boxHeight > maxHeight) {
+        boxHeight = maxHeight
+        boxWidth = boxHeight * ratio
+      }
+
+      setCropBox({
+        x: (width - boxWidth) / 2,
+        y: (height - boxHeight) / 2,
+        width: boxWidth,
+        height: boxHeight,
+      })
+    })
+  }
+
+  const handleCropViewportPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('[data-crop-box]')) return
     e.preventDefault()
-    setIsCropDragging(true)
+    setCropInteraction('image')
     cropDragRef.current = {
-      x: cropOffset.x,
-      y: cropOffset.y,
       startX: e.clientX,
       startY: e.clientY,
+      startOffset: { ...cropOffset },
+      startBox: { ...cropBox },
+      handle: '',
+    }
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }
+
+  const handleCropBoxPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCropInteraction('box')
+    cropDragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startOffset: { ...cropOffset },
+      startBox: { ...cropBox },
+      handle: '',
+    }
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }
+
+  const handleCropResizePointerDown = (handle: string, e: React.PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCropInteraction('resize')
+    cropDragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startOffset: { ...cropOffset },
+      startBox: { ...cropBox },
+      handle,
     }
     e.currentTarget.setPointerCapture?.(e.pointerId)
   }
 
   const handleCropPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isCropDragging) return
+    if (!cropInteraction) return
+
     const dx = e.clientX - cropDragRef.current.startX
     const dy = e.clientY - cropDragRef.current.startY
-    setCropOffset({
-      x: cropDragRef.current.x + dx,
-      y: cropDragRef.current.y + dy,
-    })
+
+    if (cropInteraction === 'image') {
+      setCropOffset(clampImageOffset({
+        x: cropDragRef.current.startOffset.x + dx,
+        y: cropDragRef.current.startOffset.y + dy,
+      }))
+      return
+    }
+
+    if (cropInteraction === 'box') {
+      setCropBox(clampCropBox({
+        ...cropDragRef.current.startBox,
+        x: cropDragRef.current.startBox.x + dx,
+        y: cropDragRef.current.startBox.y + dy,
+      }))
+      return
+    }
+
+    const start = cropDragRef.current.startBox
+    const handle = cropDragRef.current.handle
+    const ratio = getCropRatioValue()
+    const minSize = 80
+    let next = { ...start }
+
+    if (cropRatio === 'free') {
+      if (handle.includes('e')) next.width = Math.max(minSize, start.width + dx)
+      if (handle.includes('s')) next.height = Math.max(minSize, start.height + dy)
+      if (handle.includes('w')) {
+        const newWidth = Math.max(minSize, start.width - dx)
+        next.x = start.x + start.width - newWidth
+        next.width = newWidth
+      }
+      if (handle.includes('n')) {
+        const newHeight = Math.max(minSize, start.height - dy)
+        next.y = start.y + start.height - newHeight
+        next.height = newHeight
+      }
+    } else {
+      const horizontal = handle.includes('e') || handle.includes('w')
+      const vertical = handle.includes('n') || handle.includes('s')
+      const primary = horizontal ? dx : dy
+      const signed = (handle.includes('w') || handle.includes('n')) ? -primary : primary
+      let size = Math.max(minSize, horizontal ? start.width + signed : start.height + signed)
+      let width = horizontal ? size : size * ratio
+      let height = horizontal ? size / ratio : size
+
+      if (width > cropViewport.width) { width = cropViewport.width; height = width / ratio }
+      if (height > cropViewport.height) { height = cropViewport.height; width = height * ratio }
+
+      if (handle.includes('w')) next.x = start.x + start.width - width
+      if (handle.includes('n')) next.y = start.y + start.height - height
+      next.width = width
+      next.height = height
+      if (!horizontal && !vertical) next = start
+    }
+
+    setCropBox(clampCropBox(next))
   }
 
   const handleCropPointerUp = () => {
-    setIsCropDragging(false)
+    setCropInteraction(null)
+  }
+
+  const handleCropWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const nextZoom = Math.min(4, Math.max(1, cropZoom - e.deltaY * 0.0015))
+    setCropZoom(nextZoom)
+    setCropOffset(clampImageOffset(cropOffset, nextZoom))
+  }
+
+  const resetCropView = () => {
+    setCropZoom(1)
+    setCropOffset({ x: 0, y: 0 })
+    centerCropBox(getCropRatioValue(), true)
+  }
+
+  const handleCropRatioChange = (ratio: typeof cropRatio) => {
+    setCropRatio(ratio)
+
+    requestAnimationFrame(() => {
+      const viewport = cropViewportRef.current
+      if (!viewport) return
+
+      const rect = viewport.getBoundingClientRect()
+      const width = rect.width
+      const height = rect.height
+      setCropViewport({ width, height })
+
+      if (ratio === 'free') {
+        const currentWidth = cropBox.width || width * 0.72
+        const currentHeight = cropBox.height || height * 0.72
+        const nextWidth = Math.min(currentWidth, width * 0.9)
+        const nextHeight = Math.min(currentHeight, height * 0.9)
+        setCropBox({
+          x: Math.max(0, (width - nextWidth) / 2),
+          y: Math.max(0, (height - nextHeight) / 2),
+          width: nextWidth,
+          height: nextHeight,
+        })
+        return
+      }
+
+      const nextRatio = ratio === '1:1' ? 1 : ratio === '4:5' ? 4 / 5 : 3 / 4
+      const maxWidth = width * 0.82
+      const maxHeight = height * 0.82
+      let nextWidth = maxWidth
+      let nextHeight = nextWidth / nextRatio
+
+      if (nextHeight > maxHeight) {
+        nextHeight = maxHeight
+        nextWidth = nextHeight * nextRatio
+      }
+
+      setCropBox({
+        x: (width - nextWidth) / 2,
+        y: (height - nextHeight) / 2,
+        width: nextWidth,
+        height: nextHeight,
+      })
+    })
   }
 
   const applyCrop = async () => {
@@ -536,41 +833,33 @@ export default function AdminProductsPage() {
     img.crossOrigin = 'anonymous'
     img.src = src
 
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve()
-      img.onerror = () => reject(new Error('تعذر تحميل الصورة للقص'))
-    }).catch(() => {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error('تعذر تحميل الصورة للقص'))
+      })
+    } catch {
       toast.error('تعذر تجهيز الصورة للقص. حاول مرة أخرى.')
-    })
+      return
+    }
 
-    if (!img.naturalWidth || !img.naturalHeight) return
+    if (!img.naturalWidth || !img.naturalHeight || !cropViewport.width || !cropViewport.height) return
 
-    const ratio = getCropRatioValue()
+    const metrics = getCropImageMetrics()
+    if (!metrics) return
+
+    const sx = Math.max(0, Math.min(img.naturalWidth, (cropBox.x - metrics.left) / metrics.scale))
+    const sy = Math.max(0, Math.min(img.naturalHeight, (cropBox.y - metrics.top) / metrics.scale))
+    const sw = Math.max(1, Math.min(img.naturalWidth - sx, cropBox.width / metrics.scale))
+    const sh = Math.max(1, Math.min(img.naturalHeight - sy, cropBox.height / metrics.scale))
+
     const outWidth = 1600
-    const outHeight = Math.max(1, Math.round(outWidth / ratio))
-
-    // نفس هندسة المعاينة: الصورة contain داخل مساحة القص ثم zoom/pan.
-    const viewportWidth = 320
-    const viewportHeight = Math.round(viewportWidth / ratio)
-    const coverScale = Math.max(
-      viewportWidth / img.naturalWidth,
-      viewportHeight / img.naturalHeight
-    )
-    const renderedWidth = img.naturalWidth * coverScale * cropZoom
-    const renderedHeight = img.naturalHeight * coverScale * cropZoom
-    const left = (viewportWidth - renderedWidth) / 2 + cropOffset.x
-    const top = (viewportHeight - renderedHeight) / 2 + cropOffset.y
-
-    const sourceScale = coverScale * cropZoom
-    const sx = Math.max(0, (0 - left) / sourceScale)
-    const sy = Math.max(0, (0 - top) / sourceScale)
-    const sw = Math.min(img.naturalWidth - sx, viewportWidth / sourceScale)
-    const sh = Math.min(img.naturalHeight - sy, viewportHeight / sourceScale)
-
+    const outHeight = Math.max(1, Math.round(outWidth * (sh / sw)))
     const canvas = document.createElement('canvas')
     canvas.width = outWidth
     canvas.height = outHeight
     const ctx = canvas.getContext('2d')
+
     if (!ctx) {
       toast.error('تعذر إنشاء الصورة المقصوصة')
       return
@@ -581,7 +870,7 @@ export default function AdminProductsPage() {
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outWidth, outHeight)
 
     const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/jpeg', 0.92)
+      canvas.toBlob(resolve, 'image/jpeg', 0.94)
     )
 
     if (!blob) {
@@ -2589,27 +2878,27 @@ export default function AdminProductsPage() {
       )}
 
       {/* =================================================
-          IMAGE CROP MODAL
+          IMAGE CROP MODAL — SMART FREE CROP
       ================================================= */}
       {cropIndex !== null && existingImages[cropIndex] && (
         <div
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-          style={{ background: 'rgba(15,15,14,.78)', backdropFilter: 'blur(10px)' }}
+          className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6"
+          style={{ background: 'rgba(15,15,14,.84)', backdropFilter: 'blur(14px)' }}
           onClick={closeCrop}
         >
           <div
-            className="w-full max-w-xl p-5 sm:p-6"
-            style={{ background: '#F7F4EF', border: '1px solid rgba(255,255,255,.15)' }}
+            className="w-full max-w-3xl max-h-[96vh] overflow-auto p-4 sm:p-6 rounded-2xl"
+            style={{ background: '#F7F4EF', border: '1px solid rgba(255,255,255,.16)', boxShadow: '0 30px 90px rgba(0,0,0,.28)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-4 mb-5">
+            <div className="flex items-center justify-between gap-4 mb-4">
               <div>
-                <h3 className="text-sm font-semibold">اقتصاص الصورة</h3>
+                <h3 className="text-sm sm:text-base font-semibold">اقتصاص الصورة</h3>
                 <p className="text-[10px] mt-1" style={{ color: '#9A9288' }}>
-                  حرّك الصورة واضبط التكبير ثم طبّق القص.
+                  حرّك الصورة أو إطار القص، كبّر بالماوس، واسحب أي زاوية لاقتصاص حر.
                 </p>
               </div>
-              <button type="button" onClick={closeCrop} className="w-9 h-9 flex items-center justify-center" style={{ background: 'rgba(41,42,40,.05)', color: '#6F6962' }}>×</button>
+              <button type="button" onClick={closeCrop} className="w-9 h-9 flex items-center justify-center rounded-lg" style={{ background: 'rgba(41,42,40,.05)', color: '#6F6962' }}>×</button>
             </div>
 
             <div className="flex flex-wrap gap-2 mb-4">
@@ -2617,72 +2906,137 @@ export default function AdminProductsPage() {
                 <button
                   key={ratio}
                   type="button"
-                  onClick={() => setCropRatio(ratio)}
-                  className="px-3 py-2 text-[10px] transition-all"
+                  onClick={() => handleCropRatioChange(ratio)}
+                  className="px-3.5 py-2 text-[10px] rounded-lg transition-all"
                   style={{
                     border: cropRatio === ratio ? '1px solid #B49A68' : '1px solid rgba(41,42,40,.10)',
                     background: cropRatio === ratio ? 'rgba(180,154,104,.10)' : 'transparent',
                     color: cropRatio === ratio ? '#8F7547' : '#6F6962',
                   }}
                 >
-                  {ratio === 'free' ? 'أصلي' : ratio}
+                  {ratio === 'free' ? 'حر' : ratio}
                 </button>
               ))}
+
+              <button
+                type="button"
+                onClick={resetCropView}
+                className="mr-auto px-3 py-2 text-[10px] rounded-lg"
+                style={{ border: '1px solid rgba(41,42,40,.10)', color: '#6F6962', background: 'rgba(41,42,40,.025)' }}
+              >
+                إعادة ضبط
+              </button>
             </div>
 
             <div
-              className="mx-auto overflow-hidden relative touch-none select-none"
+              ref={cropViewportRef}
+              className="mx-auto relative overflow-hidden touch-none select-none rounded-xl"
               style={{
-                width: 'min(100%, 420px)',
-                aspectRatio: String(getCropRatioValue()),
-                background: '#222',
-                border: '1px solid rgba(255,255,255,.15)',
+                width: 'min(100%, 680px)',
+                height: 'min(62vh, 520px)',
+                minHeight: '300px',
+                background: '#1C1C1B',
+                border: '1px solid rgba(255,255,255,.16)',
+                cursor: cropInteraction === 'image' ? 'grabbing' : 'grab',
               }}
-              onPointerDown={handleCropPointerDown}
+              onPointerDown={handleCropViewportPointerDown}
               onPointerMove={handleCropPointerMove}
               onPointerUp={handleCropPointerUp}
               onPointerCancel={handleCropPointerUp}
+              onWheel={handleCropWheel}
             >
               <img
                 src={existingImages[cropIndex]}
                 alt="Crop preview"
-                onLoad={(e) => setCropImageSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })}
+                onLoad={handleCropImageLoad}
                 draggable={false}
-                className="absolute max-w-none select-none pointer-events-none"
+                className="absolute max-w-none select-none pointer-events-none will-change-transform"
                 style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  transform: `translate(${cropOffset.x}px, ${cropOffset.y}px) scale(${cropZoom})`,
-                  transformOrigin: 'center',
-                  transition: isCropDragging ? 'none' : 'transform .18s ease-out',
+                  width: cropImageSize.width ? `${cropImageSize.width * (Math.min(cropViewport.width / cropImageSize.width, cropViewport.height / cropImageSize.height) * cropZoom)}px` : '100%',
+                  height: cropImageSize.height ? `${cropImageSize.height * (Math.min(cropViewport.width / cropImageSize.width, cropViewport.height / cropImageSize.height) * cropZoom)}px` : '100%',
+                  left: cropImageSize.width ? `${(cropViewport.width - cropImageSize.width * (Math.min(cropViewport.width / cropImageSize.width, cropViewport.height / cropImageSize.height) * cropZoom)) / 2 + cropOffset.x}px` : 0,
+                  top: cropImageSize.height ? `${(cropViewport.height - cropImageSize.height * (Math.min(cropViewport.width / cropImageSize.width, cropViewport.height / cropImageSize.height) * cropZoom)) / 2 + cropOffset.y}px` : 0,
+                  objectFit: 'fill',
                 }}
               />
-              <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.35), inset 0 0 0 999px rgba(0,0,0,.08)' }} />
-              <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 opacity-40">
-                <span className="border-r border-b border-white/30" /><span className="border-r border-b border-white/30" /><span className="border-b border-white/30" />
-                <span className="border-r border-b border-white/30" /><span className="border-r border-b border-white/30" /><span className="border-b border-white/30" />
-                <span className="border-r border-white/30" /><span className="border-r border-white/30" /><span />
+
+              {/* Outside-crop dimming */}
+              <div className="absolute inset-0 pointer-events-none" style={{ background: 'rgba(0,0,0,.42)' }} />
+
+              {cropBox.width > 0 && (
+                <div
+                  data-crop-box
+                  className="absolute touch-none"
+                  style={{
+                    left: cropBox.x,
+                    top: cropBox.y,
+                    width: cropBox.width,
+                    height: cropBox.height,
+                    boxShadow: '0 0 0 9999px rgba(0,0,0,.42), 0 8px 28px rgba(0,0,0,.16)',
+                    border: '1px solid rgba(255,255,255,.96)',
+                    cursor: cropInteraction === 'box' ? 'grabbing' : 'move',
+                  }}
+                  onPointerDown={handleCropBoxPointerDown}
+                  onPointerMove={handleCropPointerMove}
+                  onPointerUp={handleCropPointerUp}
+                  onPointerCancel={handleCropPointerUp}
+                >
+                  <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 opacity-50">
+                    <span className="border-r border-b border-white/45" /><span className="border-r border-b border-white/45" /><span className="border-b border-white/45" />
+                    <span className="border-r border-b border-white/45" /><span className="border-r border-b border-white/45" /><span className="border-b border-white/45" />
+                    <span className="border-r border-white/45" /><span className="border-r border-white/45" /><span />
+                  </div>
+
+                  {['nw','n','ne','e','se','s','sw','w'].map((handle) => {
+                    const positions: Record<string, string> = {
+                      nw: 'left-[-6px] top-[-6px] cursor-nwse-resize',
+                      n: 'left-1/2 top-[-5px] -translate-x-1/2 cursor-ns-resize',
+                      ne: 'right-[-6px] top-[-6px] cursor-nesw-resize',
+                      e: 'right-[-5px] top-1/2 -translate-y-1/2 cursor-ew-resize',
+                      se: 'right-[-6px] bottom-[-6px] cursor-nwse-resize',
+                      s: 'left-1/2 bottom-[-5px] -translate-x-1/2 cursor-ns-resize',
+                      sw: 'left-[-6px] bottom-[-6px] cursor-nesw-resize',
+                      w: 'left-[-5px] top-1/2 -translate-y-1/2 cursor-ew-resize',
+                    }
+                    return (
+                      <button
+                        key={handle}
+                        type="button"
+                        aria-label={`Resize ${handle}`}
+                        onPointerDown={(e) => handleCropResizePointerDown(handle, e)}
+                        className={`absolute z-20 w-3 h-3 rounded-full bg-white shadow ${positions[handle]}`}
+                      />
+                    )
+                  })}
+                </div>
+              )}
+
+              <div className="absolute top-3 left-3 pointer-events-none px-2 py-1 rounded bg-black/35 text-white/80 text-[9px]">
+                اسحب الصورة للتحريك • عجلة الماوس للتكبير
               </div>
             </div>
 
-            <div className="mt-5 flex items-center gap-3">
+            <div className="mt-4 flex items-center gap-3">
               <span className="text-[10px]" style={{ color: '#8B837A' }}>Zoom</span>
               <input
                 type="range"
                 min="1"
-                max="3"
+                max="4"
                 step="0.01"
                 value={cropZoom}
-                onChange={(e) => setCropZoom(Number(e.target.value))}
-                className="flex-1"
+                onChange={(e) => {
+                  const next = Number(e.target.value)
+                  setCropZoom(next)
+                  setCropOffset(clampImageOffset(cropOffset, next))
+                }}
+                className="flex-1 accent-[#B49A68]"
               />
               <span className="text-[10px] w-10 text-left" style={{ color: '#8B837A' }}>{cropZoom.toFixed(1)}×</span>
             </div>
 
             <div className="flex flex-col-reverse sm:flex-row gap-3 mt-5 pt-4 border-t" style={{ borderColor: 'rgba(41,42,40,.08)' }}>
-              <button type="button" onClick={closeCrop} className="px-5 py-3 text-xs" style={{ background: 'rgba(41,42,40,.04)', color: '#6F6962' }}>إلغاء</button>
-              <button type="button" onClick={applyCrop} disabled={saving} className="px-5 py-3 text-xs font-semibold sm:mr-auto disabled:opacity-40" style={{ background: '#292A28', color: '#F5F2ED' }}>
+              <button type="button" onClick={closeCrop} className="px-5 py-3 text-xs rounded-lg" style={{ background: 'rgba(41,42,40,.04)', color: '#6F6962' }}>إلغاء</button>
+              <button type="button" onClick={applyCrop} disabled={saving || !cropBox.width} className="px-5 py-3 text-xs font-semibold sm:mr-auto rounded-lg disabled:opacity-40" style={{ background: '#292A28', color: '#F5F2ED' }}>
                 {saving ? 'جاري الحفظ...' : 'تطبيق القص'}
               </button>
             </div>
