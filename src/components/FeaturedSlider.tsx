@@ -11,32 +11,45 @@ export default function FeaturedSlider({
 }) {
   const [current, setCurrent] = useState(0)
 
-  const nextSlide = useCallback(() => {
-    if (products.length <= 1) return
+  // Use the same admin-defined product order in the featured slider.
+  // Products without sort_order stay at the end.
+  const orderedProducts = [...products].sort((a, b) => {
+    const aOrder = (a as Product & { sort_order?: number | null }).sort_order
+    const bOrder = (b as Product & { sort_order?: number | null }).sort_order
 
-    setCurrent((prev) => (prev + 1) % products.length)
-  }, [products.length])
+    if (aOrder == null && bOrder == null) return 0
+    if (aOrder == null) return 1
+    if (bOrder == null) return -1
+
+    return aOrder - bOrder
+  })
+
+  const nextSlide = useCallback(() => {
+    if (orderedProducts.length <= 1) return
+
+    setCurrent((prev) => (prev + 1) % orderedProducts.length)
+  }, [orderedProducts.length])
 
   const prevSlide = useCallback(() => {
-    if (products.length <= 1) return
+    if (orderedProducts.length <= 1) return
 
     setCurrent(
       (prev) =>
-        (prev - 1 + products.length) % products.length
+        (prev - 1 + orderedProducts.length) % orderedProducts.length
     )
-  }, [products.length])
+  }, [orderedProducts.length])
 
   useEffect(() => {
-    if (products.length <= 1) return
+    if (orderedProducts.length <= 1) return
 
     const interval = setInterval(nextSlide, 5000)
 
     return () => clearInterval(interval)
-  }, [nextSlide, products.length])
+  }, [nextSlide, orderedProducts.length])
 
   if (!products || products.length === 0) return null
 
-  const activeProduct = products[current]
+  const activeProduct = orderedProducts[current]
 
   return (
     <div
@@ -69,7 +82,7 @@ export default function FeaturedSlider({
           IMAGES
       ===================================================== */}
 
-      {products.map((product, index) => (
+      {orderedProducts.map((product, index) => (
         <img
           key={product.id}
           src={
@@ -339,7 +352,7 @@ export default function FeaturedSlider({
           لا Background
       ===================================================== */}
 
-      {products.length > 1 && (
+      {orderedProducts.length > 1 && (
         <button
           onClick={prevSlide}
           aria-label="Previous slide"
@@ -415,7 +428,7 @@ export default function FeaturedSlider({
           FLOATING NEXT ARROW
       ===================================================== */}
 
-      {products.length > 1 && (
+      {orderedProducts.length > 1 && (
         <button
           onClick={nextSlide}
           aria-label="Next slide"
@@ -504,7 +517,7 @@ export default function FeaturedSlider({
           z-[10]
         "
       >
-        {products.map((_, i) => (
+        {orderedProducts.map((_, i) => (
           <button
             key={i}
             onClick={() =>

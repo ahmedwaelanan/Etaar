@@ -48,6 +48,23 @@ export default function AdminProductsPage() {
   const [deletingId, setDeletingId] =
     useState<string | null>(null)
 
+  // ترتيب المنتجات من لوحة الإدارة
+  const [draggedProductId, setDraggedProductId] = useState<string | null>(null)
+  const [reordering, setReordering] = useState(false)
+
+  // تمرير الصفحة تلقائياً أثناء سحب المنتج قرب أعلى/أسفل الشاشة
+  const dragPointerYRef = useRef<number | null>(null)
+  const dragScrollFrameRef = useRef<number | null>(null)
+
+  // محرر قص الصور
+  const [cropIndex, setCropIndex] = useState<number | null>(null)
+  const [cropZoom, setCropZoom] = useState(1)
+  const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 })
+  const [cropRatio, setCropRatio] = useState<'free' | '1:1' | '4:5' | '3:4'>('4:5')
+  const [cropImageSize, setCropImageSize] = useState({ width: 0, height: 0 })
+  const cropDragRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 })
+  const [isCropDragging, setIsCropDragging] = useState(false)
+
   /*
   ======================================================
   HELPERS
@@ -117,6 +134,10 @@ export default function AdminProductsPage() {
     const { data, error } = await supabase
       .from('products')
       .select('*')
+      .order('sort_order', {
+        ascending: true,
+        nullsFirst: false,
+      })
       .order('created_at', {
         ascending: false,
       })
@@ -134,6 +155,64 @@ export default function AdminProductsPage() {
   useEffect(() => {
     fetchProducts()
   }, [])
+
+  /*
+  ======================================================
+  AUTO SCROLL WHILE REORDERING
+  ======================================================
+  */
+  useEffect(() => {
+    if (!draggedProductId) {
+      dragPointerYRef.current = null
+
+      if (dragScrollFrameRef.current !== null) {
+        cancelAnimationFrame(dragScrollFrameRef.current)
+        dragScrollFrameRef.current = null
+      }
+
+      return
+    }
+
+    const handleWindowDragOver = (event: DragEvent) => {
+      dragPointerYRef.current = event.clientY
+    }
+
+    const scrollWhileDragging = () => {
+      const pointerY = dragPointerYRef.current
+      const viewportHeight = window.innerHeight
+
+      if (pointerY !== null && viewportHeight > 0) {
+        const edgeZone = Math.min(120, viewportHeight * 0.18)
+        const maxSpeed = 18
+        let speed = 0
+
+        if (pointerY < edgeZone) {
+          const intensity = 1 - pointerY / edgeZone
+          speed = -Math.max(2, maxSpeed * intensity)
+        } else if (pointerY > viewportHeight - edgeZone) {
+          const distance = viewportHeight - pointerY
+          const intensity = 1 - distance / edgeZone
+          speed = Math.max(2, maxSpeed * intensity)
+        }
+
+        if (speed !== 0) window.scrollBy(0, speed)
+      }
+
+      dragScrollFrameRef.current = requestAnimationFrame(scrollWhileDragging)
+    }
+
+    window.addEventListener('dragover', handleWindowDragOver)
+    dragScrollFrameRef.current = requestAnimationFrame(scrollWhileDragging)
+
+    return () => {
+      window.removeEventListener('dragover', handleWindowDragOver)
+      if (dragScrollFrameRef.current !== null) {
+        cancelAnimationFrame(dragScrollFrameRef.current)
+        dragScrollFrameRef.current = null
+      }
+      dragPointerYRef.current = null
+    }
+  }, [draggedProductId])
 
   /*
   ======================================================
@@ -159,6 +238,9 @@ export default function AdminProductsPage() {
 
     setEditingId(null)
     setShowForm(false)
+    setCropIndex(null)
+    setCropZoom(1)
+    setCropOffset({ x: 0, y: 0 })
 
     if (fileRef.current) {
       fileRef.current.value = ''
@@ -374,6 +456,209 @@ export default function AdminProductsPage() {
     )
   }
 
+
+  /*
+  ======================================================
+  IMAGE ORDER
+  ======================================================
+  */
+
+  const moveImage = (from: number, to: number) => {
+    if (from === to) return
+    setExistingImages((prev) => {
+      const next = [...prev]
+      const [item] = next.splice(from, 1)
+      next.splice(to, 0, item)
+      return next
+    })
+  }
+
+  /*
+  ======================================================
+  IMAGE CROP
+  ======================================================
+  */
+
+  const getCropRatioValue = () => {
+    if (cropRatio === '1:1') return 1
+    if (cropRatio === '4:5') return 4 / 5
+    if (cropRatio === '3:4') return 3 / 4
+    return cropImageSize.width && cropImageSize.height
+      ? cropImageSize.width / cropImageSize.height
+      : 1
+  }
+
+  const openCrop = (index: number) => {
+    setCropIndex(index)
+    setCropZoom(1)
+    setCropOffset({ x: 0, y: 0 })
+    setCropImageSize({ width: 0, height: 0 })
+    document.body.style.overflow = 'hidden'
+  }
+
+  const closeCrop = () => {
+    setCropIndex(null)
+    setIsCropDragging(false)
+    document.body.style.overflow = 'unset'
+  }
+
+  const handleCropPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsCropDragging(true)
+    cropDragRef.current = {
+      x: cropOffset.x,
+      y: cropOffset.y,
+      startX: e.clientX,
+      startY: e.clientY,
+    }
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }
+
+  const handleCropPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isCropDragging) return
+    const dx = e.clientX - cropDragRef.current.startX
+    const dy = e.clientY - cropDragRef.current.startY
+    setCropOffset({
+      x: cropDragRef.current.x + dx,
+      y: cropDragRef.current.y + dy,
+    })
+  }
+
+  const handleCropPointerUp = () => {
+    setIsCropDragging(false)
+  }
+
+  const applyCrop = async () => {
+    if (cropIndex === null || !existingImages[cropIndex]) return
+
+    const src = existingImages[cropIndex]
+    const img = new window.Image()
+    img.crossOrigin = 'anonymous'
+    img.src = src
+
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('تعذر تحميل الصورة للقص'))
+    }).catch(() => {
+      toast.error('تعذر تجهيز الصورة للقص. حاول مرة أخرى.')
+    })
+
+    if (!img.naturalWidth || !img.naturalHeight) return
+
+    const ratio = getCropRatioValue()
+    const outWidth = 1600
+    const outHeight = Math.max(1, Math.round(outWidth / ratio))
+
+    // نفس هندسة المعاينة: الصورة contain داخل مساحة القص ثم zoom/pan.
+    const viewportWidth = 320
+    const viewportHeight = Math.round(viewportWidth / ratio)
+    const coverScale = Math.max(
+      viewportWidth / img.naturalWidth,
+      viewportHeight / img.naturalHeight
+    )
+    const renderedWidth = img.naturalWidth * coverScale * cropZoom
+    const renderedHeight = img.naturalHeight * coverScale * cropZoom
+    const left = (viewportWidth - renderedWidth) / 2 + cropOffset.x
+    const top = (viewportHeight - renderedHeight) / 2 + cropOffset.y
+
+    const sourceScale = coverScale * cropZoom
+    const sx = Math.max(0, (0 - left) / sourceScale)
+    const sy = Math.max(0, (0 - top) / sourceScale)
+    const sw = Math.min(img.naturalWidth - sx, viewportWidth / sourceScale)
+    const sh = Math.min(img.naturalHeight - sy, viewportHeight / sourceScale)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = outWidth
+    canvas.height = outHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      toast.error('تعذر إنشاء الصورة المقصوصة')
+      return
+    }
+
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outWidth, outHeight)
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', 0.92)
+    )
+
+    if (!blob) {
+      toast.error('تعذر إنشاء الصورة المقصوصة')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const path = `cropped-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+      const { error } = await supabase.storage
+        .from('products')
+        .upload(path, blob, { contentType: 'image/jpeg', upsert: false })
+
+      if (error) throw error
+
+      const { data } = supabase.storage
+        .from('products')
+        .getPublicUrl(path)
+
+      if (!data?.publicUrl) throw new Error('لم يتم إنشاء رابط الصورة')
+
+      setExistingImages((prev) =>
+        prev.map((url, i) => (i === cropIndex ? data.publicUrl : url))
+      )
+      toast.success('تم قص الصورة بنجاح')
+      closeCrop()
+    } catch (error) {
+      console.error('Crop upload error:', error)
+      toast.error('فشل حفظ الصورة المقصوصة')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /*
+  ======================================================
+  PRODUCT DRAG ORDER
+  ======================================================
+  */
+
+  const handleProductDrop = async (targetId: string) => {
+    if (!draggedProductId || draggedProductId === targetId || reordering) return
+
+    const oldIndex = products.findIndex((p) => p.id === draggedProductId)
+    const newIndex = products.findIndex((p) => p.id === targetId)
+    if (oldIndex < 0 || newIndex < 0) return
+
+    const next = [...products]
+    const [moved] = next.splice(oldIndex, 1)
+    next.splice(newIndex, 0, moved)
+    setProducts(next)
+    setDraggedProductId(null)
+    setReordering(true)
+
+    try {
+      const results = await Promise.all(
+        next.map((product, index) =>
+          supabase
+            .from('products')
+            .update({ sort_order: index })
+            .eq('id', product.id)
+        )
+      )
+
+      const failed = results.find((result) => result.error)
+      if (failed?.error) throw failed.error
+      toast.success('تم حفظ ترتيب المنتجات')
+    } catch (error) {
+      console.error('Product reorder error:', error)
+      toast.error('تعذر حفظ ترتيب المنتجات')
+      await fetchProducts()
+    } finally {
+      setReordering(false)
+    }
+  }
+
   /*
   ======================================================
   SAVE PRODUCT
@@ -474,6 +759,10 @@ export default function AdminProductsPage() {
 
       sizes:
         cleanSizes,
+      sort_order:
+        editingId
+          ? undefined
+          : products.length,
     }
 
     try {
@@ -1473,6 +1762,10 @@ export default function AdminProductsPage() {
                 صور المنتج
               </label>
 
+              <p className="text-[10px] mt-1" style={{ color: '#AAA198' }}>
+                اسحب الصور لترتيبها — الصورة رقم 1 هي الغلاف. اضغط Crop لاقتصاص أي صورة.
+              </p>
+
               <input
                 ref={fileRef}
                 type="file"
@@ -1537,11 +1830,23 @@ export default function AdminProductsPage() {
                     (url, index) => (
                       <div
                         key={`${url}-${index}`}
+                        draggable
+                        onDragStart={() => setDraggedProductId(`image-${index}`)}
+                        onDragEnd={() => setDraggedProductId(null)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          const from = Number((draggedProductId || '').replace('image-', ''))
+                          if (Number.isFinite(from)) moveImage(from, index)
+                          setDraggedProductId(null)
+                        }}
                         className="
                           relative
                           aspect-square
                           overflow-hidden
                           group
+                          cursor-grab
+                          active:cursor-grabbing
                         "
                         style={{
                           border:
@@ -1555,6 +1860,28 @@ export default function AdminProductsPage() {
                           sizes="120px"
                           className="object-cover"
                         />
+
+                        <span
+                          className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-white/90 shadow"
+                          style={{ color: '#292A28' }}
+                        >
+                          {index + 1}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openCrop(index)
+                          }}
+                          className="absolute bottom-2 right-2 z-10 px-2.5 py-1.5 text-[9px] font-semibold opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{
+                            background: 'rgba(41,42,40,.82)',
+                            color: '#F5F2ED',
+                          }}
+                        >
+                          Crop
+                        </button>
 
                         <button
                           type="button"
@@ -1765,11 +2092,30 @@ export default function AdminProductsPage() {
               return (
                 <div
                   key={product.id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedProductId(product.id)
+                    dragPointerYRef.current = e.clientY
+                  }}
+                  onDragEnd={() => {
+                    setDraggedProductId(null)
+                    dragPointerYRef.current = null
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    dragPointerYRef.current = e.clientY
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    handleProductDrop(product.id)
+                  }}
                   className="
                     p-4
                     transition-all
                     duration-300
                     hover:-translate-y-0.5
+                    cursor-grab
+                    active:cursor-grabbing
                   "
                   style={{
                     background:
@@ -1789,6 +2135,20 @@ export default function AdminProductsPage() {
                       gap-4
                     "
                   >
+                    {/* DRAG HANDLE */}
+                    <div
+                      className="w-7 h-7 flex items-center justify-center flex-shrink-0 rounded-full"
+                      title="اسحب لتغيير ترتيب المنتج"
+                      style={{
+                        color: reordering ? '#B49A68' : '#AAA198',
+                        background: 'rgba(41,42,40,.035)',
+                      }}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M8 5h.01M8 12h.01M8 19h.01M16 5h.01M16 12h.01M16 19h.01" strokeWidth="3" strokeLinecap="round" />
+                      </svg>
+                    </div>
+
                     {/* IMAGE */}
 
                     {product.images &&
@@ -2227,6 +2587,109 @@ export default function AdminProductsPage() {
           </p>
         </div>
       )}
+
+      {/* =================================================
+          IMAGE CROP MODAL
+      ================================================= */}
+      {cropIndex !== null && existingImages[cropIndex] && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+          style={{ background: 'rgba(15,15,14,.78)', backdropFilter: 'blur(10px)' }}
+          onClick={closeCrop}
+        >
+          <div
+            className="w-full max-w-xl p-5 sm:p-6"
+            style={{ background: '#F7F4EF', border: '1px solid rgba(255,255,255,.15)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-4 mb-5">
+              <div>
+                <h3 className="text-sm font-semibold">اقتصاص الصورة</h3>
+                <p className="text-[10px] mt-1" style={{ color: '#9A9288' }}>
+                  حرّك الصورة واضبط التكبير ثم طبّق القص.
+                </p>
+              </div>
+              <button type="button" onClick={closeCrop} className="w-9 h-9 flex items-center justify-center" style={{ background: 'rgba(41,42,40,.05)', color: '#6F6962' }}>×</button>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-4">
+              {(['free', '1:1', '4:5', '3:4'] as const).map((ratio) => (
+                <button
+                  key={ratio}
+                  type="button"
+                  onClick={() => setCropRatio(ratio)}
+                  className="px-3 py-2 text-[10px] transition-all"
+                  style={{
+                    border: cropRatio === ratio ? '1px solid #B49A68' : '1px solid rgba(41,42,40,.10)',
+                    background: cropRatio === ratio ? 'rgba(180,154,104,.10)' : 'transparent',
+                    color: cropRatio === ratio ? '#8F7547' : '#6F6962',
+                  }}
+                >
+                  {ratio === 'free' ? 'أصلي' : ratio}
+                </button>
+              ))}
+            </div>
+
+            <div
+              className="mx-auto overflow-hidden relative touch-none select-none"
+              style={{
+                width: 'min(100%, 420px)',
+                aspectRatio: String(getCropRatioValue()),
+                background: '#222',
+                border: '1px solid rgba(255,255,255,.15)',
+              }}
+              onPointerDown={handleCropPointerDown}
+              onPointerMove={handleCropPointerMove}
+              onPointerUp={handleCropPointerUp}
+              onPointerCancel={handleCropPointerUp}
+            >
+              <img
+                src={existingImages[cropIndex]}
+                alt="Crop preview"
+                onLoad={(e) => setCropImageSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })}
+                draggable={false}
+                className="absolute max-w-none select-none pointer-events-none"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  transform: `translate(${cropOffset.x}px, ${cropOffset.y}px) scale(${cropZoom})`,
+                  transformOrigin: 'center',
+                  transition: isCropDragging ? 'none' : 'transform .18s ease-out',
+                }}
+              />
+              <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.35), inset 0 0 0 999px rgba(0,0,0,.08)' }} />
+              <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 opacity-40">
+                <span className="border-r border-b border-white/30" /><span className="border-r border-b border-white/30" /><span className="border-b border-white/30" />
+                <span className="border-r border-b border-white/30" /><span className="border-r border-b border-white/30" /><span className="border-b border-white/30" />
+                <span className="border-r border-white/30" /><span className="border-r border-white/30" /><span />
+              </div>
+            </div>
+
+            <div className="mt-5 flex items-center gap-3">
+              <span className="text-[10px]" style={{ color: '#8B837A' }}>Zoom</span>
+              <input
+                type="range"
+                min="1"
+                max="3"
+                step="0.01"
+                value={cropZoom}
+                onChange={(e) => setCropZoom(Number(e.target.value))}
+                className="flex-1"
+              />
+              <span className="text-[10px] w-10 text-left" style={{ color: '#8B837A' }}>{cropZoom.toFixed(1)}×</span>
+            </div>
+
+            <div className="flex flex-col-reverse sm:flex-row gap-3 mt-5 pt-4 border-t" style={{ borderColor: 'rgba(41,42,40,.08)' }}>
+              <button type="button" onClick={closeCrop} className="px-5 py-3 text-xs" style={{ background: 'rgba(41,42,40,.04)', color: '#6F6962' }}>إلغاء</button>
+              <button type="button" onClick={applyCrop} disabled={saving} className="px-5 py-3 text-xs font-semibold sm:mr-auto disabled:opacity-40" style={{ background: '#292A28', color: '#F5F2ED' }}>
+                {saving ? 'جاري الحفظ...' : 'تطبيق القص'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

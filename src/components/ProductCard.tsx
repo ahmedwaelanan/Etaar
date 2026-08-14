@@ -302,7 +302,9 @@ export default function ProductCard({
                   key={i}
                   src={img}
                   alt={product.title}
-                  loading="lazy"
+                  loading={i === currentImg ? 'eager' : 'lazy'}
+                  fetchPriority={i === currentImg ? 'high' : 'auto'}
+                  decoding="async"
                   draggable="false"
                   className="jidaar-product-image"
                 />
@@ -405,7 +407,7 @@ export default function ProductCard({
 
               {hasSizes && (
                 <span className="jidaar-from">
-                  يبدأ من
+                 Start from
                 </span>
               )}
 
@@ -480,6 +482,8 @@ export default function ProductCard({
                 <img
                   src={images[0]}
                   alt=""
+                  loading="eager"
+                  decoding="async"
                   className="jidaar-modal-image"
                 />
 

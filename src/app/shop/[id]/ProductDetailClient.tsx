@@ -44,9 +44,16 @@ export default function ProductDetailClient({
 
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([])
   const [relatedLoading, setRelatedLoading] = useState(true)
+  const [visibleRelatedCount, setVisibleRelatedCount] = useState(4)
 
   const autoSlideRef =
     useRef<NodeJS.Timeout | null>(null)
+
+  // Touch/swipe state for the main gallery and lightbox.
+  const galleryTouchStart = useRef({ x: 0, y: 0 })
+  const galleryTouchMoved = useRef(false)
+  const lightboxTouchStart = useRef({ x: 0, y: 0 })
+  const lightboxTouchMoved = useRef(false)
 
   const [isLightboxOpen, setIsLightboxOpen] =
     useState(false)
@@ -312,8 +319,9 @@ export default function ProductDetailClient({
           .sort((a, b) => b.score - a.score)
 
         setRelatedProducts(
-          scoredProducts.slice(0, 4).map(item => item.product)
+          scoredProducts.slice(0, 8).map(item => item.product)
         )
+        setVisibleRelatedCount(4)
       } catch (error) {
         console.error('Failed to load related products:', error)
         setRelatedProducts([])
@@ -424,6 +432,61 @@ export default function ProductDetailClient({
   }
 
   /* =====================================================
+     TOUCH / SWIPE NAVIGATION
+  ===================================================== */
+
+  const handleGalleryTouchStart = (e: React.TouchEvent) => {
+    if (images.length <= 1) return
+
+    stopAutoSlide()
+    galleryTouchMoved.current = false
+
+    const touch = e.touches[0]
+    galleryTouchStart.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+    }
+  }
+
+  const handleGalleryTouchMove = (e: React.TouchEvent) => {
+    if (images.length <= 1) return
+
+    const touch = e.touches[0]
+    const dx = touch.clientX - galleryTouchStart.current.x
+    const dy = touch.clientY - galleryTouchStart.current.y
+
+    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+      galleryTouchMoved.current = true
+      e.preventDefault()
+    }
+  }
+
+  const handleGalleryTouchEnd = (e: React.TouchEvent) => {
+    if (images.length <= 1) {
+      startAutoSlide()
+      return
+    }
+
+    const touch = e.changedTouches[0]
+    const dx = touch.clientX - galleryTouchStart.current.x
+    const dy = touch.clientY - galleryTouchStart.current.y
+
+    if (
+      Math.abs(dx) >= 45 &&
+      Math.abs(dx) > Math.abs(dy) * 1.15
+    ) {
+      if (dx < 0) {
+        nextImage()
+      } else {
+        prevImage()
+      }
+      galleryTouchMoved.current = true
+    } else {
+      startAutoSlide()
+    }
+  }
+
+  /* =====================================================
      LIGHTBOX
   ===================================================== */
 
@@ -481,6 +544,53 @@ export default function ProductDetailClient({
       x: 0,
       y: 0,
     })
+  }
+
+  const handleLightboxTouchStart = (e: React.TouchEvent) => {
+    if (images.length <= 1) return
+
+    lightboxTouchMoved.current = false
+    const touch = e.touches[0]
+
+    lightboxTouchStart.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+    }
+  }
+
+  const handleLightboxTouchMove = (e: React.TouchEvent) => {
+    if (images.length <= 1 || zoom > 1) return
+
+    const touch = e.touches[0]
+    const dx = touch.clientX - lightboxTouchStart.current.x
+    const dy = touch.clientY - lightboxTouchStart.current.y
+
+    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+      lightboxTouchMoved.current = true
+      e.preventDefault()
+    }
+  }
+
+  const handleLightboxTouchEnd = (e: React.TouchEvent) => {
+    if (images.length <= 1 || zoom > 1) return
+
+    const touch = e.changedTouches[0]
+    const dx = touch.clientX - lightboxTouchStart.current.x
+    const dy = touch.clientY - lightboxTouchStart.current.y
+
+    if (
+      Math.abs(dx) >= 45 &&
+      Math.abs(dx) > Math.abs(dy) * 1.15
+    ) {
+      if (dx < 0) {
+        lightboxNext()
+      } else {
+        lightboxPrev()
+      }
+
+      lightboxTouchMoved.current = true
+      e.stopPropagation()
+    }
   }
 
   const handleWheel = (
@@ -782,14 +892,10 @@ export default function ProductDetailClient({
                   cursor-zoom-in
                 "
                 style={{
-                  background:
-                    '#EEEAE4',
-
-                  border:
-                    '1px solid rgba(41,42,40,.08)',
-
-                  boxShadow:
-                    '0 20px 55px rgba(41,42,40,.07)',
+                  background: '#EEEAE4',
+                  border: '1px solid rgba(41,42,40,.08)',
+                  boxShadow: '0 20px 55px rgba(41,42,40,.07)',
+                  touchAction: 'pan-y',
                 }}
                 onMouseEnter={
                   stopAutoSlide
@@ -797,11 +903,15 @@ export default function ProductDetailClient({
                 onMouseLeave={
                   startAutoSlide
                 }
-                onClick={() =>
-                  openLightbox(
-                    selectedImage
-                  )
-                }
+                onTouchStart={handleGalleryTouchStart}
+                onTouchMove={handleGalleryTouchMove}
+                onTouchEnd={handleGalleryTouchEnd}
+                onClick={() => {
+                  if (!galleryTouchMoved.current) {
+                    openLightbox(selectedImage)
+                  }
+                  galleryTouchMoved.current = false
+                }}
               >
                 {images.length >
                 0 ? (
@@ -1615,17 +1725,64 @@ export default function ProductDetailClient({
                   sm:gap-6
                 "
               >
-                {relatedProducts.map(
-                  (relatedProduct, index) => (
-                    <ProductCard
-                      key={relatedProduct.id}
-                      product={relatedProduct}
-                      index={index}
-                      viewMode="grid"
-                    />
-                  )
-                )}
+                {relatedProducts
+                  .slice(0, visibleRelatedCount)
+                  .map(
+                    (relatedProduct, index) => (
+                      <ProductCard
+                        key={relatedProduct.id}
+                        product={relatedProduct}
+                        index={index}
+                        viewMode="grid"
+                      />
+                    )
+                  )}
               </div>
+
+              {visibleRelatedCount < relatedProducts.length && (
+                <div className="mt-8 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisibleRelatedCount((prev) =>
+                        Math.min(prev + 4, relatedProducts.length)
+                      )
+                    }
+                    className="
+                      group
+                      inline-flex
+                      items-center
+                      gap-2
+                      px-7
+                      py-3
+                      text-xs
+                      font-medium
+                      transition-all
+                      duration-300
+                      hover:-translate-y-0.5
+                    "
+                    style={{
+                      color: '#6F675E',
+                      background: 'rgba(255,255,255,.34)',
+                      border: '1px solid rgba(41,42,40,.12)',
+                      boxShadow: '0 8px 24px rgba(41,42,40,.05)',
+                    }}
+                  >
+                    <span>More</span>
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      className="transition-transform duration-300 group-hover:translate-y-0.5"
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </section>
           )}
         </div>
@@ -1649,9 +1806,15 @@ export default function ProductDetailClient({
             background:
               'rgba(35,33,30,.96)',
           }}
-          onClick={
-            closeLightbox
-          }
+          onClick={(e) => {
+            if (
+              e.target === e.currentTarget &&
+              !lightboxTouchMoved.current
+            ) {
+              closeLightbox()
+            }
+            lightboxTouchMoved.current = false
+          }}
         >
           {/* CLOSE */}
 
@@ -1827,6 +1990,9 @@ export default function ProductDetailClient({
             onWheel={
               handleWheel
             }
+            onTouchStart={handleLightboxTouchStart}
+            onTouchMove={handleLightboxTouchMove}
+            onTouchEnd={handleLightboxTouchEnd}
             onMouseDown={
               handleMouseDown
             }

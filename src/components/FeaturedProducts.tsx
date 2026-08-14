@@ -14,6 +14,19 @@ export default function FeaturedProducts({
   const [viewMode, setViewMode] =
     useState<ProductViewMode>('grid')
 
+  // Keep featured products in the same order defined by the admin.
+  // Products without sort_order are kept after the manually ordered products.
+  const orderedProducts = [...products].sort((a, b) => {
+    const aOrder = (a as Product & { sort_order?: number | null }).sort_order
+    const bOrder = (b as Product & { sort_order?: number | null }).sort_order
+
+    if (aOrder == null && bOrder == null) return 0
+    if (aOrder == null) return 1
+    if (bOrder == null) return -1
+
+    return aOrder - bOrder
+  })
+
   return (
     <div className="jidaar-products-wrapper">
 
@@ -247,7 +260,7 @@ export default function FeaturedProducts({
         `}
       >
 
-        {products.map(
+        {orderedProducts.map(
           (product, index) => (
             <ProductCard
               key={product.id}

@@ -3,10 +3,18 @@ import ShopContent from './ShopContent'
 
 export default async function ShopPage() {
   const supabase = createServerSupabaseClient()
-  const { data: products } = await supabase
+
+  const { data: products, error } = await supabase
     .from('products')
     .select('*')
-    .order('created_at', { ascending: false })
+    .order('sort_order', {
+      ascending: true,
+      nullsFirst: false,
+    })
+
+  if (error) {
+    console.error('Failed to load products:', error)
+  }
 
   return <ShopContent products={products ?? []} />
 }

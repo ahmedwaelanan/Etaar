@@ -59,7 +59,7 @@ export default function SignupPage() {
       }
 
       toast.success(
-        'تم إنشاء الحساب! تحقق من بريدك الإلكتروني'
+        'تم إنشاء الحساب! أهلا بك في Jidaar'
       )
 
       router.push('/auth/login')
