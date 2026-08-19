@@ -104,7 +104,7 @@ export default function BrandIntro() {
       animate-brand-reveal
     "
     style={{
-      fontFamily: "'Saturday Champagne', cursive",
+      fontFamily: 'Arial, sans-serif',
     }}
   >
     JIDAAR
